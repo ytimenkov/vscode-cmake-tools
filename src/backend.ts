@@ -1,23 +1,19 @@
 import * as vscode from 'vscode';
 
-import * as api from './api';
+import { ExecutableTarget, Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings } from './api';
 
 // This is based on the API interface, but several async members are sync here
 export interface CMakeToolsBackend extends vscode.Disposable {
   readonly sourceDir: string;
-  readonly mainListFile: string;
   readonly binaryDir: string;
-  readonly cachePath: string;
-  readonly executableTargets: api.ExecutableTarget[];
+
   readonly diagnostics: vscode.DiagnosticCollection;
-  readonly targets: api.Target[];
+
+  readonly targets: Target[];
+
   readonly reconfigured: vscode.Event<void>;
-  readonly targetChanged: vscode.Event<void>;
 
-  executeCMakeCommand(args: string[], options?: api.ExecuteOptions): Promise<api.ExecutionResult>;
-  execute(program: string, args: string[], options?: api.ExecuteOptions): Promise<api.ExecutionResult>;
-
-  compilationInfoForFile(filepath: string): Promise<api.CompilationInfo | null>;
+  compilationInfoForFile(filepath: string): Promise<CompilationInfo | null>;
 
   configure(extraArgs?: string[], runPreBuild?: boolean): Promise<number>;
   build(target?: string): Promise<number>;
@@ -37,6 +33,26 @@ export interface CMakeToolsBackend extends vscode.Disposable {
   launchTargetProgramPath(): Promise<string | null>;
   selectLaunchTarget(): Promise<string | null>;
   selectEnvironments(): Promise<void>;
-  setActiveVariantCombination(settings: api.VariantKeywordSettings): Promise<void>;
+  setActiveVariantCombination(settings: VariantKeywordSettings): Promise<void>;
   toggleCoverageDecorations(): void;
+}
+
+/**
+ * Parameters used to initialize new build system.
+ */
+export interface ConfigureParams {
+  sourceDir: string;
+  binaryDir: string;
+  generator: Generator;
+  // TODO: Variant stuff.
+  // TODO: extra cmake command-line parameters?
+  settings?: { [key: string]: (string | number | boolean | string[]) };
+}
+
+/**
+ * The interface for initializing backend promises.
+ */
+export interface CMakeToolsBackendFactory {
+  initializeConfigured(binaryDir: string): Promise<CMakeToolsBackend>;
+  initializeNew(params: ConfigureParams): Promise<CMakeToolsBackend>;
 }

@@ -8,7 +8,7 @@ import * as cache from './cache';
 import { config } from './config';
 import { log } from './logging';
 import * as util from './util';
-import { Generator } from './environment';
+import { Generator } from './api';
 
 const MESSAGE_WRAPPER_RE =
     /\[== "CMake Server" ==\[([^]*?)\]== "CMake Server" ==\]\s*([^]*)/;

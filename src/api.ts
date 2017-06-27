@@ -74,6 +74,27 @@ export interface RichTarget {
 
 export type Target = NamedTarget | RichTarget;
 
+/**
+ * A CMake generator used to configure project.
+ */
+export interface Generator {
+  name: string;
+  platform?: string;
+  toolset?: string;
+}
+
+/**
+ * A named set of system environment variables
+ * used in every CMake command.
+ */
+export interface Environment {
+  name: string;
+  description?: string;
+  mutex?: string;
+  variables: Map<string, string>;
+  preferredGenerator?: Generator;
+}
+
 export interface CMakeToolsAPI extends Disposable {
   // Get the root source directory
   readonly sourceDir: Promise<string>;

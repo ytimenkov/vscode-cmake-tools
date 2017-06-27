@@ -20,7 +20,7 @@ import {Maybe} from './util';
 import {VariantManager} from './variants';
 import { log } from './logging';
 import {CMakeToolsBackend} from './backend';
-import { Generator } from './environment';
+import { Generator } from './api';
 
 const CMAKETOOLS_HELPER_SCRIPT = `
 get_cmake_property(is_set_up _CMAKETOOLS_SET_UP)
@@ -614,27 +614,11 @@ export abstract class CommonCMakeToolsBase implements CMakeToolsBackend {
   }
 
   /**
-   * @brief Get the path to the root CMakeLists.txt
-   */
-  public get mainListFile(): string {
-    const listfile = path.join(this.sourceDir, 'CMakeLists.txt');
-    return util.normalizePath(listfile);
-  }
-
-  /**
    * @brief Get the path to the binary dir
    */
   public get binaryDir(): string {
     const dir = this.replaceVars(config.buildDirectory);
     return util.normalizePath(dir, false);
-  }
-
-  /**
-   * @brief Get the path to the CMakeCache file in the build directory
-   */
-  public get cachePath(): string {
-    const file = path.join(this.binaryDir, 'CMakeCache.txt');
-    return util.normalizePath(file);
   }
 
   /**

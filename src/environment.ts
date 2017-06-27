@@ -7,22 +7,9 @@ import * as async from './async'
 import {config} from './config';
 import * as util from './util';
 import { log } from './logging';
+import { Environment, Generator } from "./api";
 
 type Maybe<T> = util.Maybe<T>;
-
-export interface Generator {
-  name: string;
-  platform?: string;
-  toolset?: string;
-}
-
-export interface Environment {
-  name: string;
-  description?: string;
-  mutex?: string;
-  variables: Map<string, string>;
-  preferredGenerator?: Generator;
-}
 
 interface VSWhereItem {
   displayName: string;
