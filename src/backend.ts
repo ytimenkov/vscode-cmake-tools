@@ -20,6 +20,12 @@ export interface CMakeToolsBackend extends Disposable {
 
   readonly noExecutablesMessage: string;
 
+  /**
+   * An array to which disposables can be added. When the
+   * backend is deactivated the disposables will be disposed.
+   */
+  subscriptions: Disposable[];
+
   compilationInfoForFile(filepath: string): Promise<CompilationInfo | null>;
 
   /**

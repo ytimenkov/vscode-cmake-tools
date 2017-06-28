@@ -37,13 +37,12 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   private _oldGenerator = config.generator;
   private _cmakePath = config.cmakePath;
   private _configureEnvironment = config.configureEnvironment;
-  private _disposables = []  as vscode.Disposable[];
 
   constructor(private _ctx: vscode.ExtensionContext) {
     this.variants = new VariantManager(_ctx);
     this.environments = new EnvironmentManager();
 
-    vscode.workspace.onDidChangeConfiguration(() => {
+    _ctx.subscriptions.push(vscode.workspace.onDidChangeConfiguration(async () => {
       const do_reload =
         (config.useCMakeServer !== this._cmakeServerWasEnabled) ||
         (config.preferredGenerators !== this._oldPreferredGenerators) ||
@@ -58,7 +57,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       if (do_reload) {
         await this.restart();
       }
-    });
+    }));
   }
 
   /**
@@ -70,7 +69,6 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     await this.shutdown();
     this._reconfiguredEmitter.dispose();
     this._targetChangedEventEmitter.dispose();
-    this._disposables.map(t => t.dispose());
   }
 
   /**
@@ -472,8 +470,9 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     if (version_ex.retc !== 0 || !version_ex.stdout) {
       throw new Error(`Bad CMake executable "${this._cmakePath}". Is it installed and a valid executable?`);
     }
-    const version = util.parseVersion(/cmake version (.*?)\r?\n/.exec(version_ex.stdout)![1]);
-    log.info(`Using CMake version ${version} from ${this._cmakePath}`);
+    const versionStr = /cmake version (.*?)\r?\n/.exec(version_ex.stdout)![1];
+    const version = util.parseVersion(versionStr);
+    log.info(`Using CMake executable "${this._cmakePath}", version ${versionStr}`);
     if (config.useCMakeServer) {
       if (util.versionGreater(version, '3.7.1')) {
         return new ServerClientCMakeToolsFactory();
@@ -494,13 +493,12 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       log.verbose('Starting CMake Tools backend');
       this._backend = this.backendFactory.initializeConfigured(config.buildDirectory);
       const backend = await this._backend;
-      backend.reconfigured(() => this._reconfiguredEmitter.fire());
+      backend.reconfigured(() => this._reconfiguredEmitter.fire(), backend.subscriptions);
     } catch (error) {
       log.error(error);
-      this._backend = Promise.reject(error);
+      this._backend = Promise.reject(error).catch();
       vscode.window.showErrorMessage(`CMakeTools extension was unable to initialize: ${error} [See output window for more details]`);
     }
-    await this._backend;
   }
 
   async shutdown() {

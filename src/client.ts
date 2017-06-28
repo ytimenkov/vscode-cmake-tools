@@ -1,6 +1,5 @@
 'use strict';
 
-import * as vscode from 'vscode';
 import * as path from 'path';
 
 import * as api from './api';
@@ -13,15 +12,16 @@ import { config } from './config';
 import * as cms from './server-client';
 import { log } from './logging';
 import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams, ProgressHandler } from './backend';
-import { CancellationToken } from 'vscode';
+import { CancellationToken, DiagnosticCollection, Disposable, EventEmitter } from 'vscode';
 import { CMake } from './cmake'
 
 export class ServerClientCMakeTools implements CMakeToolsBackend {
-  readonly  noExecutablesMessage: string = 'No targets are available for debugging.';
+  subscriptions: Disposable[] = [];
+  readonly noExecutablesMessage: string = 'No targets are available for debugging.';
   // TODO: Initialize these.
   sourceDir: string;
   binaryDir: string;
-  diagnostics: vscode.DiagnosticCollection;
+  diagnostics: DiagnosticCollection;
   generator: api.CMakeGenerator;
 
   private _globalSettings: cms.GlobalSettingsContent;
@@ -77,10 +77,11 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
   }
 
   async dispose() {
-    await this.dangerousShutdownClient();
+    await Promise.all(this.subscriptions);
+    await this.client.shutdown();
   }
 
-  private _reconfiguredEmitter = new vscode.EventEmitter<void>();
+  private _reconfiguredEmitter = new EventEmitter<void>();
   public get reconfigured() { return this._reconfiguredEmitter.event; }
 
   get executableTargets() {
@@ -134,13 +135,6 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
 
   cacheEntry(key: string) {
     return this._cacheEntries.get(key) || null;
-  }
-
-  async dangerousShutdownClient() {
-    if (this.client) {
-      await this.client.shutdown();
-      // this.client = undefined;
-    }
   }
 
   async compilationInfoForFile(filepath: string):
