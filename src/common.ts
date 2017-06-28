@@ -20,7 +20,7 @@ import {Maybe} from './util';
 import {VariantManager} from './variants';
 import { log } from './logging';
 import {CMakeToolsBackend} from './backend';
-import { Generator } from './api';
+import { CMakeGenerator } from './api';
 
 const CMAKETOOLS_HELPER_SCRIPT = `
 get_cmake_property(is_set_up _CMAKETOOLS_SET_UP)
@@ -222,8 +222,8 @@ export abstract class CommonCMakeToolsBase implements CMakeToolsBackend {
     return this._environments.currentEnvironmentVariables;
   }
 
-  public getPreferredGenerators(): Generator[] {
-    const configGenerators = config.preferredGenerators.map(g => <Generator>{ name: g });
+  public getPreferredGenerators(): CMakeGenerator[] {
+    const configGenerators = config.preferredGenerators.map(g => <CMakeGenerator>{ name: g });
     return configGenerators.concat(this._environments.preferredEnvironmentGenerators);
   }
 
@@ -239,7 +239,7 @@ export abstract class CommonCMakeToolsBase implements CMakeToolsBackend {
   }
 
   // Returns the first one available on this system
-  public async pickGenerator(): Promise<Maybe<Generator>> {
+  public async pickGenerator(): Promise<Maybe<CMakeGenerator>> {
     // The user can override our automatic selection logic in their config
     const generator = config.generator;
     if (generator) {

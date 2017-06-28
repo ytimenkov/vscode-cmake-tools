@@ -22,6 +22,15 @@ export class CMake {
     return normalizePath(file);
   }
 
+  /**
+   * Resolves the name of 'all' build target for specified generator.
+   * @param generator The generator name.
+   */
+  static getAllTargetName(generator: string) {
+    return (/Visual Studio/.test(generator) || generator.toLowerCase().includes('xcode')) ? 'ALL_BUILD' : 'all';
+  }
+
+
   static executeCMakeCommand(args: string[], options?: ExecuteOptions): Promise<ExecutionResult> {
     return Promise.reject(new Error("TODO"));
   }

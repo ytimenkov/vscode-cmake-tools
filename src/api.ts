@@ -77,7 +77,7 @@ export type Target = NamedTarget | RichTarget;
 /**
  * A CMake generator used to configure project.
  */
-export interface Generator {
+export interface CMakeGenerator {
   name: string;
   platform?: string;
   toolset?: string;
@@ -92,7 +92,7 @@ export interface Environment {
   description?: string;
   mutex?: string;
   variables: Map<string, string>;
-  preferredGenerator?: Generator;
+  preferredGenerator?: CMakeGenerator;
 }
 
 export interface CMakeToolsAPI extends Disposable {

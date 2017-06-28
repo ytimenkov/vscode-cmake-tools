@@ -7,7 +7,7 @@ import * as async from './async'
 import {config} from './config';
 import * as util from './util';
 import { log } from './logging';
-import { Environment, Generator } from "./api";
+import { Environment, CMakeGenerator } from "./api";
 
 type Maybe<T> = util.Maybe<T>;
 
@@ -386,9 +386,9 @@ export class EnvironmentManager {
     return util.mergeEnvironment(process.env, active_env);
   }
 
-  public get preferredEnvironmentGenerators(): Generator[] {
+  public get preferredEnvironmentGenerators(): CMakeGenerator[] {
     const allEnvs = this.availableEnvironments;
-    return this.activeEnvironments.reduce<Generator[]>((gens, envName) => {
+    return this.activeEnvironments.reduce<CMakeGenerator[]>((gens, envName) => {
       const env = allEnvs.get(envName);
       if (env && env.preferredGenerator)
         gens.push(env.preferredGenerator);

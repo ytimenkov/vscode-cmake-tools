@@ -9,44 +9,86 @@ import * as async from './async';
 import * as cache from './cache';
 import * as util from './util';
 import * as common from './common';
-import {config} from './config';
+import { config } from './config';
 import * as cms from './server-client';
-import { log } from "./logging";
+import { log } from './logging';
+import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams, ProgressHandler } from './backend';
+import { CancellationToken } from 'vscode';
+import { CMake } from './cmake'
 
-export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
-  private _client?: cms.CMakeServerClient;
+export class ServerClientCMakeTools implements CMakeToolsBackend {
+  readonly  noExecutablesMessage: string = 'No targets are available for debugging.';
+  // TODO: Initialize these.
+  sourceDir: string;
+  binaryDir: string;
+  diagnostics: vscode.DiagnosticCollection;
+  generator: api.CMakeGenerator;
+
   private _globalSettings: cms.GlobalSettingsContent;
   private _dirty = true;
   private _cacheEntries = new Map<string, cache.Entry>();
   private _accumulatedMessages: string[] = [];
 
-  private _codeModel: null|cms.CodeModelContent;
+  /**
+   * The primary build output channel. We use the ThrottledOutputChannel because
+   * large volumes of output can make VSCode choke
+   */
+  private readonly _channel = new util.ThrottledOutputChannel('CMake/Build');
+
+  private constructor(public client: cms.CMakeServerClient) {
+  }
+
+  public static async create(client: cms.CMakeServerClient): Promise<ServerClientCMakeTools> {
+    // TODO: Handle initialization failure. Do we need to dispose?
+    const backend = new ServerClientCMakeTools(client);
+    // await super._init();
+    // await this._restartClient();
+    backend._globalSettings = await client.getGlobalSettings();
+    // this.codeModel = this._workspaceCacheContent.codeModel || null;
+    // this._statusBar.statusMessage = 'Ready';
+    // this._statusBar.isBusy = false;
+    // if (this.executableTargets.length > 0) {
+    //   this.currentLaunchTarget = this.executableTargets[0].name;
+    // }
+    try {
+      await backend._refreshAfterConfigure();
+    } catch (e) {
+      if (e instanceof cms.ServerError) {
+        // Do nothing
+      } else {
+        throw e;
+      }
+    }
+    return backend;
+  }
+
+  private _codeModel: null | cms.CodeModelContent;
   public get codeModel() {
     return this._codeModel;
   }
-  public set codeModel(cm: null|cms.CodeModelContent) {
+  public set codeModel(cm: null | cms.CodeModelContent) {
     this._codeModel = cm;
-    this._workspaceCacheContent.codeModel = cm;
-    if (cm && cm.configurations.length && cm.configurations[0].projects.length) {
-      this._statusBar.projectName = cm.configurations[0].projects[0].name;
-    } else {
-      this._statusBar.projectName = 'No Project';
-    }
-    this._writeWorkspaceCacheContent();
+    // if (cm && cm.configurations.length && cm.configurations[0].projects.length) {
+    //   this._statusBar.projectName = cm.configurations[0].projects[0].name;
+    // } else {
+    //   this._statusBar.projectName = 'No Project';
+    // }
+    // this._writeWorkspaceCacheContent();
+  }
+
+  async dispose() {
+    await this.dangerousShutdownClient();
   }
 
   private _reconfiguredEmitter = new vscode.EventEmitter<void>();
-  private readonly _reconfigured = this._reconfiguredEmitter.event;
-  public get reconfigured() {
-    return this._reconfigured;
-  }
+  public get reconfigured() { return this._reconfiguredEmitter.event; }
 
   get executableTargets() {
     return this.targets.filter(t => t.targetType === 'EXECUTABLE')
-        .map(t => ({
-               name: t.name,
-               path: t.filepath,
-             }));
+      .map(t => ({
+        name: t.name,
+        path: t.filepath,
+      }));
   }
 
   public markDirty() {
@@ -81,13 +123,13 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
 
   allCacheEntries(): api.CacheEntryProperties[] {
     return Array.from(this._cacheEntries.values()).map(e => ({
-                                                         type: e.type,
-                                                         key: e.key,
-                                                         value: e.value,
-                                                         advanced: e.advanced,
-                                                         helpString:
-                                                             e.helpString,
-                                                       }));
+      type: e.type,
+      key: e.key,
+      value: e.value,
+      advanced: e.advanced,
+      helpString:
+      e.helpString,
+    }));
   }
 
   cacheEntry(key: string) {
@@ -95,42 +137,22 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
   }
 
   async dangerousShutdownClient() {
-    if (this._client) {
-      await this._client.shutdown();
-      this._client = undefined;
+    if (this.client) {
+      await this.client.shutdown();
+      // this.client = undefined;
     }
-  }
-
-  async dangerousRestartClient() {
-    await this._restartClient();
-  }
-
-  async cleanConfigure() {
-    const build_dir = this.binaryDir;
-    const cache = this.cachePath;
-    const cmake_files = path.join(build_dir, 'CMakeFiles');
-    await this.dangerousShutdownClient();
-    if (await async.exists(cache)) {
-      this._channel.appendLine('[vscode] Removing ' + cache);
-      await async.unlink(cache);
-    }
-    if (await async.exists(cmake_files)) {
-      this._channel.append('[vscode] Removing ' + cmake_files);
-      await util.rmdir(cmake_files);
-    }
-    await this._restartClient();
-    return this.configure();
   }
 
   async compilationInfoForFile(filepath: string):
-      Promise<api.CompilationInfo|null> {
+    Promise<api.CompilationInfo | null> {
     if (!this.codeModel) {
       return null;
     }
-    const config = this.codeModel.configurations.length === 1 ?
-        this.codeModel.configurations[0] :
-        this.codeModel.configurations.find(
-            c => c.name === this.selectedBuildType);
+    const config = this.codeModel.configurations[0];
+    // const config = this.codeModel.configurations.length === 1 ?
+    // this.codeModel.configurations[0] :
+    // this.codeModel.configurations.find(
+    //   c => c.name === this.selectedBuildType);
     if (!config) {
       return null;
     }
@@ -139,13 +161,13 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
         for (const group of target.fileGroups) {
           const found = group.sources.find(source => {
             const abs_source = path.isAbsolute(source) ?
-                source :
-                path.join(target.sourceDirectory, source);
+              source :
+              path.join(target.sourceDirectory, source);
             const abs_filepath = path.isAbsolute(filepath) ?
-                filepath :
-                path.join(this.sourceDir, filepath);
+              filepath :
+              path.join(this.sourceDir, filepath);
             return util.normalizePath(abs_source) ===
-                util.normalizePath(abs_filepath);
+              util.normalizePath(abs_filepath);
           });
           if (found) {
             const defs = (group.defines || []).map(util.parseCompileDefinition);
@@ -158,9 +180,9 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
               compileDefinitions: defs_o,
               compileFlags: util.splitCommandLine(group.compileFlags),
               includeDirectories:
-                  (group.includePath ||
-                   [
-                   ]).map(p => ({path: p.path, isSystem: p.isSystem || false})),
+              (group.includePath ||
+                [
+                ]).map(p => ({ path: p.path, isSystem: p.isSystem || false })),
             };
           }
         }
@@ -169,24 +191,33 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
     return null;
   }
 
-  async configure(extraArgs: string[] = [], runPreBuild = true): Promise<number> {
-    if (!this._client)
-      return -1;
+  async configure(extraArgs?: string[], progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean> {
+    // TODO: Preconfigure did this:
+    // 1. Check that some operation is already running.
+    // 2. Check that folder is initialized and offered to QuickStart
+    // 3. Initialized build type, if variant is not chosen.
 
-    if (!await this._preconfigure()) {
-      return -1;
-    }
-    if (runPreBuild) {
-      if (!await this._prebuild()) {
-        return -1;
-      }
-    }
+    // if (!await this._preconfigure()) {
+    //   return -1;
+    // }
 
-    const args = await this.prepareConfigure();
+    // Pre-build checked that files are dirty and offerred to save all.
+    // Also cleared output channel.
+    // if (runPreBuild) {
+    //   if (!await this._prebuild()) {
+    //     return -1;
+    //   }
+    // }
 
-    this.statusMessage = 'Configuring...';
+    // PrepareConfigure initialized parameters, created initial cache file.
+
+    // const args = await this.prepareConfigure();
+
+    // this.statusMessage = 'Configuring...';
+
     const parser = new diagnostics.BuildParser(
-        this.binaryDir, ['cmake'], this.activeGenerator);
+      this.binaryDir, ['cmake'], this.activeGenerator);
+
     const parseMessages = () => {
       for (const msg of this._accumulatedMessages) {
         const lines = msg.split('\n');
@@ -194,108 +225,65 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
           parser.parseLine(line);
         }
       }
-      parser.fillDiagnosticCollection(this._diagnostics);
+      parser.fillDiagnosticCollection(this.diagnostics);
     };
+
     try {
       this._accumulatedMessages = [];
-      await this._client.configure(
-          {cacheArguments: args.concat(extraArgs)});
-      await this._client.compute();
+      const args = extraArgs || [];
+      await this.client.configure({ cacheArguments: args });
+      await this.client.compute();
       parseMessages();
     } catch (e) {
       if (e instanceof cms.ServerError) {
         parseMessages();
-        this._channel.appendLine(`[vscode] Configure failed: ${e}`);
-        return 1;
+        // TODO:
+        // this._channel.appendLine(`[vscode] Configure failed: ${e}`);
+        return false;
       } else {
         throw e;
       }
     }
-    this._workspaceCacheContent.codeModel =
-        await this._client.sendRequest('codemodel');
-    await this._writeWorkspaceCacheContent();
+    // TODO: isn't it better rely on notifications we get from CMake Server?
     await this._refreshAfterConfigure();
-    this._setDefaultLaunchTarget();
     this._reconfiguredEmitter.fire();
-    return 0;
+    return true;
   }
 
-  async build(target?: string|null) {
-    const retc = await super.build(target);
-    if (retc >= 0) {
-      await this._refreshAfterConfigure();
-    }
-    return retc;
-  }
-
-  stop(): Promise<boolean> {
-    if (!this.currentChildProcess) {
-      return Promise.resolve(false);
-    }
-    return util.termProc(this.currentChildProcess);
+  async build(target?: string, configuration?: string, progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean> {
+    // TODO: some stuff in common.ts does pre-requisite checks.
+    // TODO:
+    return true;
   }
 
   get targets(): api.RichTarget[] {
     type Ret = api.RichTarget[];
-    if (!this._workspaceCacheContent.codeModel) {
+    if (!this.codeModel) {
       return [];
     }
-    const config = this._workspaceCacheContent.codeModel.configurations.find(
-        conf => conf.name === this.selectedBuildType);
-    if (!config) {
-      log.error(
-          `Found no matching codemodel config for active build type ${this
-              .selectedBuildType}`);
-      return [];
-    }
+    const config = this.codeModel.configurations[0];
+    // if (!config) {
+    //   log.error(
+    //     `Found no matching codemodel config for active build type ${this.selectedBuildType}`);
+    //   return [];
+    // }
     return config.projects.reduce<Ret>(
-        (acc, project) => acc.concat(project.targets
-          // Filter out targets with no build dir/filename, such as INTERFACE targets
-          .filter(t => !!t.buildDirectory && !!t.artifacts)
-          .map(
-            t => ({
-              type: 'rich' as 'rich',
-              name: t.name,
-              filepath: path.normalize(t.artifacts[0]),
-              targetType: t.type,
-            }))),
-        [{
+      (acc, project) => acc.concat(project.targets
+        // Filter out targets with no build dir/filename, such as INTERFACE targets
+        .filter(t => !!t.buildDirectory && !!t.artifacts)
+        .map(
+        t => ({
           type: 'rich' as 'rich',
-          name: this.allTargetName,
-          filepath: 'A special target to build all available targets',
-          targetType: 'META'
-        }]);
-  }
-
-  protected constructor(private _ctx: vscode.ExtensionContext) {
-    super(_ctx);
-  }
-
-  private async _restartClient(): Promise<void> {
-    this._client = await cms.CMakeServerClient
-      .start({
-        binaryDir: this.binaryDir,
-        sourceDir: this.sourceDir,
-        cmakePath: config.cmakePath,
-        environment: util.mergeEnvironment(
-          config.environment,
-          config.configureEnvironment,
-          this.currentEnvironmentVariables),
-        onDirty: async () => {
-          this._dirty = true;
-        },
-        onMessage: async (msg) => {
-          const line = `-- ${msg.message}`;
-          this._accumulatedMessages.push(line);
-          this._channel.appendLine(line);
-        },
-        onProgress: async (prog) => {
-          this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
-            (prog.progressMaximum - prog.progressMinimum);
-          this.statusMessage = prog.progressMessage;
-        },
-        pickGenerator: () => this.pickGenerator(),
-      });
+          name: t.name,
+          filepath: path.normalize(t.artifacts[0]),
+          targetType: t.type,
+        }))),
+      [{
+        type: 'rich' as 'rich',
+        name: CMake.getAllTargetName(this.generator.name),
+        filepath: 'A special target to build all available targets',
+        targetType: 'META'
+      }]);
   }
 
   protected async _refreshAfterConfigure() {
@@ -303,11 +291,11 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
   }
 
   private async _refreshCodeModel() {
-    this.codeModel = await this._client!.codemodel();
+    this.codeModel = await this.client.codemodel();
   }
 
   private async _refreshCacheEntries() {
-    const clcache = await this._client!.getCMakeCacheContent();
+    const clcache = await this.client.getCMakeCacheContent();
     return this._cacheEntries = clcache.cache.reduce((acc, el) => {
       const type: api.EntryType = {
         BOOL: api.EntryType.Bool,
@@ -320,38 +308,98 @@ export class ServerClientCMakeTools extends common.CommonCMakeToolsBase {
       }[el.type];
       console.assert(type !== undefined, `Unknown cache type ${el.type}`);
       acc.set(
-          el.key, new cache.Entry(
-                      el.key, el.value, type, el.properties.HELPSTRING,
-                      el.properties.ADVANCED === '1'));
+        el.key, new cache.Entry(
+          el.key, el.value, type, el.properties.HELPSTRING,
+          el.properties.ADVANCED === '1'));
       return acc;
     }, new Map<string, cache.Entry>());
   }
+}
 
-  protected async _init(): Promise<ServerClientCMakeTools> {
-    await super._init();
-    await this._restartClient();
-    this._globalSettings = await this._client!.getGlobalSettings();
-    this.codeModel = this._workspaceCacheContent.codeModel || null;
-    this._statusBar.statusMessage = 'Ready';
-    this._statusBar.isBusy = false;
-    if (this.executableTargets.length > 0) {
-      this.currentLaunchTarget = this.executableTargets[0].name;
+export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
+  async initializeConfigured(binaryDir: string): Promise<CMakeToolsBackend> {
+    // Work-around: CMake Server checks that CMAKE_HOME_DIRECTORY
+    // in the cmake cache is the same as what we provide when we
+    // set up the connection. Because CMake may normalize the
+    // path differently than we would, we should make sure that
+    // we pass the value that is specified in the cache exactly
+    // to avoid causing CMake server to spuriously fail.
+
+    // While trying to fix issue above CMake broke ability to run
+    // with an empty sourceDir, so workaround because necessary for
+    // different CMake versions.
+    // See
+    // https://gitlab.kitware.com/cmake/cmake/issues/16948
+    // https://gitlab.kitware.com/cmake/cmake/issues/16736
+    const cachePath = CMake.getCachePath(binaryDir);
+    const tmpcache = await cache.CMakeCache.fromPath(cachePath);
+    const sourceDir = tmpcache.get('CMAKE_HOME_DIRECTORY');
+    if (!sourceDir) {
+      throw new Error(`CMAKE_HOME_DIRECTORY is not found int the ${cachePath}. Project is not properly configured`);
     }
+
+    const client = await cms.CMakeServerClient.start({
+      binaryDir: binaryDir,
+      sourceDir: sourceDir.as<string>(),
+      cmakePath: config.cmakePath,
+      environment: util.mergeEnvironment(
+        config.environment,
+        config.configureEnvironment/*,
+          this.currentEnvironmentVariables*/),
+      onDirty: async () => {
+        // this._dirty = true;
+      },
+      onMessage: async (msg) => {
+        // const line = `-- ${msg.message}`;
+        // this._accumulatedMessages.push(line);
+        // this._channel.appendLine(line);
+      },
+      onProgress: async (prog) => {
+        // this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
+        //   (prog.progressMaximum - prog.progressMinimum);
+        // this.statusMessage = prog.progressMessage;
+      },
+      pickGenerator: () => Promise.resolve(null),
+    });
+
+    return this.createBackend(client);
+  }
+
+  async initializeNew(params: InitialConfigureParams): Promise<CMakeToolsBackend> {
+    const client = await cms.CMakeServerClient.start({
+      binaryDir: params.binaryDir,
+      sourceDir: params.sourceDir,
+      cmakePath: config.cmakePath,
+      environment: util.mergeEnvironment(
+        config.environment,
+        config.configureEnvironment/*,
+          this.currentEnvironmentVariables*/),
+      onDirty: async () => {
+        // this._dirty = true;
+      },
+      onMessage: async (msg) => {
+        // const line = `-- ${msg.message}`;
+        // this._accumulatedMessages.push(line);
+        // this._channel.appendLine(line);
+      },
+      onProgress: async (prog) => {
+        // this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
+        //   (prog.progressMaximum - prog.progressMinimum);
+        // this.statusMessage = prog.progressMessage;
+      },
+      pickGenerator: () => Promise.resolve(params.generator),
+    });
+    return this.createBackend(client);
+  }
+
+  private async createBackend(client: cms.CMakeServerClient): Promise<CMakeToolsBackend> {
     try {
-      await this._refreshAfterConfigure();
-    } catch (e) {
-      if (e instanceof cms.ServerError) {
-        // Do nothing
-      } else {
-        throw e;
-      }
+      return await ServerClientCMakeTools.create(client);
+    } catch (error) {
+      log.error(`Backend failed to initialize: ${error}. Shutting down client`);
+      await client.shutdown();
+      throw error;
     }
-    return this;
   }
 
-  static startup(ct: vscode.ExtensionContext): Promise<ServerClientCMakeTools> {
-    const cmt = new ServerClientCMakeTools(ct);
-    cmt._statusBar.statusMessage = 'Ready';
-    return cmt._init();
-  }
 }

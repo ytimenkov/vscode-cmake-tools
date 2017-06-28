@@ -1,49 +1,47 @@
-import * as vscode from 'vscode';
+import { Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings, CMakeGenerator } from './api';
+import { CancellationToken, Disposable, DiagnosticCollection, Event } from "vscode";
 
-import { ExecutableTarget, Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings } from './api';
+export type ProgressHandler = (number) => void;
 
-// This is based on the API interface, but several async members are sync here
-export interface CMakeToolsBackend extends vscode.Disposable {
+/**
+ * The backend API provides metadata for currently selected binary directory.
+ */
+export interface CMakeToolsBackend extends Disposable {
   readonly sourceDir: string;
   readonly binaryDir: string;
 
-  readonly diagnostics: vscode.DiagnosticCollection;
+  readonly diagnostics: DiagnosticCollection;
 
   readonly targets: Target[];
 
-  readonly reconfigured: vscode.Event<void>;
+  readonly reconfigured: Event<void>;
+
+  readonly generator: CMakeGenerator;
+
+  readonly noExecutablesMessage: string;
 
   compilationInfoForFile(filepath: string): Promise<CompilationInfo | null>;
 
-  configure(extraArgs?: string[], runPreBuild?: boolean): Promise<number>;
-  build(target?: string): Promise<number>;
-  install(): Promise<number>;
-  jumpToCacheFile(): Promise<vscode.TextEditor | null>;
-  clean(): Promise<number>;
-  cleanConfigure(): Promise<number>;
-  cleanRebuild(): Promise<number>;
-  buildWithTarget(): Promise<number>;
-  setDefaultTarget(): Promise<void>;
-  setBuildType(): Promise<number>;
-  ctest(): Promise<number>;
-  stop(): Promise<boolean>;
-  quickStart(): Promise<number>;
-  launchTarget(): Promise<void>;
-  debugTarget(): Promise<void>;
-  launchTargetProgramPath(): Promise<string | null>;
-  selectLaunchTarget(): Promise<string | null>;
-  selectEnvironments(): Promise<void>;
-  setActiveVariantCombination(settings: VariantKeywordSettings): Promise<void>;
-  toggleCoverageDecorations(): void;
+  /**
+   * Executes configure and generate operations on currently initialized binary
+   * directory.
+   */
+  configure(extraArgs?: string[], progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean>;
+
+  /**
+   * Builds specified target in the current build directory.
+   * @param configuration is required for multi-configuration generators.
+   */
+  build(target?: string, configuration?: string, progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean>;
 }
 
 /**
  * Parameters used to initialize new build system.
  */
-export interface ConfigureParams {
+export interface InitialConfigureParams {
   sourceDir: string;
   binaryDir: string;
-  generator: Generator;
+  generator: CMakeGenerator;
   // TODO: Variant stuff.
   // TODO: extra cmake command-line parameters?
   settings?: { [key: string]: (string | number | boolean | string[]) };
@@ -54,5 +52,5 @@ export interface ConfigureParams {
  */
 export interface CMakeToolsBackendFactory {
   initializeConfigured(binaryDir: string): Promise<CMakeToolsBackend>;
-  initializeNew(params: ConfigureParams): Promise<CMakeToolsBackend>;
+  initializeNew(params: InitialConfigureParams): Promise<CMakeToolsBackend>;
 }

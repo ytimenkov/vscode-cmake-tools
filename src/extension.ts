@@ -12,9 +12,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<CMakeT
     const cmake = new CMakeToolsWrapper(context);
     context.subscriptions.push(cmake);
 
+    // Wrap API command in try/catch to avoid strange errors when VS code executes the command.
+    // Original API should throw errors to integrate.
     function register(name, fn) {
-        fn = fn.bind(cmake);
-        return vscode.commands.registerCommand(name, _ => fn());
+        return vscode.commands.registerCommand(name, async (...args) => {
+            try {
+                await fn.bind(cmake)(...args);
+            } catch (error) {
+                vscode.window.showErrorMessage(`CMake Tools Error: ${error} [See output window for more details]`);
+            }
+        });
     }
 
     for (const key of [
