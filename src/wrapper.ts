@@ -21,7 +21,15 @@ class UnconfiguredProjectError extends global.Error {
   }
 }
 
-const unconfiguredBackend = Promise.reject(new UnconfiguredProjectError()).catch();
+/**
+ * Creates a backend promise which resolves to an unconfigured backend.
+ * It does catch() to prevent VS Code from complaining about rejected promises.
+ */
+function createUnconfiguredBackend(): Promise<CMakeToolsBackend> {
+  const result = Promise.reject(new UnconfiguredProjectError());
+  result.catch(() => {});
+  return result;
+}
 
 /**
  * The purpose of CMaketoolsWrapper is to hide which backend is being used at
@@ -30,7 +38,7 @@ const unconfiguredBackend = Promise.reject(new UnconfiguredProjectError()).catch
  * user configuration and platform
  */
 export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
-  private _backend: Promise<CMakeToolsBackend> = unconfiguredBackend;
+  private _backend: Promise<CMakeToolsBackend> = createUnconfiguredBackend();
 
   private _cmakeServerWasEnabled = config.useCMakeServer;
   private _oldPreferredGenerators = config.preferredGenerators;
@@ -491,12 +499,23 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
         this.backendFactory = await this.createBackendFactory();
       }
       log.verbose('Starting CMake Tools backend');
-      this._backend = this.backendFactory.initializeConfigured(config.buildDirectory);
+
+      const binaryDir = this.getActiveBinaryDir();
+      const cachePath = CMake.getCachePath(binaryDir);
+      let exists = await async.exists(CMake.getCachePath(binaryDir));
+      if (exists) {
+        this._backend = this.backendFactory.initializeConfigured(binaryDir);
+      }
+      else {
+        // TODO: initialize new.
+      }
+
       const backend = await this._backend;
       backend.reconfigured(() => this._reconfiguredEmitter.fire(), backend.subscriptions);
     } catch (error) {
       log.error(error);
-      this._backend = Promise.reject(error).catch();
+      // TODO: Is replacing backend with 'Unconfigured' promise needed?
+      // rejection is handled here, just matter of proper shutdown...
       vscode.window.showErrorMessage(`CMakeTools extension was unable to initialize: ${error} [See output window for more details]`);
     }
   }
@@ -504,7 +523,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   async shutdown() {
     try {
       const backendPromise = this._backend;
-      this._backend = unconfiguredBackend;
+      this._backend = createUnconfiguredBackend();
 
       const backend = await backendPromise;
       log.verbose('Shutting down CMake Tools backend');
@@ -512,7 +531,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       log.verbose('CMake Tools has been stopped');
     } catch (error) {
       if (!(error instanceof UnconfiguredProjectError)) {
-        // Something really bad is happened here...
+        // Something really bad is happened here
+        // or backend just failed to initialize.
         log.error(error);
       }
     }
@@ -555,4 +575,14 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     }
   }
 
+  private getActiveBinaryDir(): string {
+    // TODO: binary dir might be read from variant also.
+    const replacements: [string, string][] = [
+      // ['${buildType}', this.selectedBuildType || '']
+    ];
+
+    const binaryDir = util.replaceVars(replacements.reduce(
+      (accdir, [needle, what]) => util.replaceAll(accdir, needle, what), config.buildDirectory));
+    return util.normalizePath(binaryDir);
+  }
 }
