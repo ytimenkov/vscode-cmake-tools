@@ -298,15 +298,15 @@ export class EnvironmentManager {
     return this._availableEnvironments;
   }
 
-  public readonly environmentsLoaded: Promise<void> = (async () => {
-    console.log('Loading environments');
-    const envs = await availableEnvironments();
-    console.log('Environments loaded');
-    for (const env of envs) {
-      log.info(`Detected available environment "${env.name}`);
-      this._availableEnvironments.set(env.name, env);
-    }
-  })();
+  // public readonly environmentsLoaded: Promise<void> = (async () => {
+  //   console.log('Loading environments');
+  //   const envs = await availableEnvironments();
+  //   console.log('Environments loaded');
+  //   for (const env of envs) {
+  //     log.info(`Detected available environment "${env.name}`);
+  //     this._availableEnvironments.set(env.name, env);
+  //   }
+  // })();
 
   /**
    * The environments (by name) which are currently active in the workspace
