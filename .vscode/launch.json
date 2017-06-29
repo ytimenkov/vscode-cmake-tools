@@ -15,7 +15,7 @@
                 "${workspaceRoot}/out/src/*",
                 "${workspaceRoot}/out/test/*"
             ],
-            "preLaunchTask": "npm",
+            "preLaunchTask": "run compile",
             "smartStep": true
         },
         {
@@ -31,8 +31,8 @@
                 "${workspaceRoot}/out/src/*",
                 "${workspaceRoot}/out/test/*"
             ],
-            "preLaunchTask": "npm"
-            // "smartStep": true
+            "preLaunchTask": "run compile",
+            "smartStep": true
         }
     ]
 }
