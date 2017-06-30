@@ -10,7 +10,13 @@
         "rootDir": ".",
         "noImplicitReturns": true,
         "strictNullChecks": true,
-        "experimentalDecorators": true
+        "experimentalDecorators": true,
+        "plugins": [
+            {
+                "name": "tslint-language-service",
+                "configFile": "tslint.json"
+            }
+        ]
     },
     "exclude": [
         "node_modules",
