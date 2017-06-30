@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-import {Maybe} from './util';
+import { Maybe } from './util';
+import { Disposable, window } from "vscode";
+import { Model } from "./model";
 
 interface Hideable {
   show(): void;
@@ -15,23 +17,50 @@ function setVisible<T extends Hideable>(i: T, v: boolean) {
   }
 }
 
+export class StatusBar2 implements Disposable {
+  private readonly _state = window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.5);
+
+  public constructor(private _model: Model) {
+    _model.onDidChange(this.onModelChange, this, this.disposables);
+    this._state.show();
+    this.onModelChange();
+  }
+
+  private onModelChange() {
+    const modelState = this._model.state;
+    if (modelState) {
+      this._state.text = `CMake: ${modelState}`;
+    } else {
+      this._state.text = "CMake: Unconfigured";
+    }
+  }
+
+  private disposables: Disposable[] = [
+    this._state
+  ]
+
+  dispose() {
+    this.disposables.forEach(d => d.dispose());
+  }
+}
+
 export class StatusBar implements vscode.Disposable {
   private readonly _cmakeToolsStatusItem =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.5);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.5);
   private readonly _buildButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.4);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.4);
   private readonly _targetButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.3);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.3);
   private readonly _debugButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.2);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.2);
   private readonly _debugTargetButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.1);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.1);
   private readonly _testStatusButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.05);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.05);
   private readonly _warningMessage =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3);
   private readonly _environmentSelectionButton =
-      vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 200);
+  vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 200);
 
   public dispose() {
     for (const item of [
@@ -51,7 +80,7 @@ export class StatusBar implements vscode.Disposable {
   constructor() {
     this._cmakeToolsStatusItem.command = 'cmake.setBuildType';
     this._cmakeToolsStatusItem.tooltip =
-        'Click to select the current build type';
+      'Click to select the current build type';
     this._testStatusButton.command = 'cmake.ctest';
     this._testStatusButton.tooltip = 'Click to execute CTest tests';
     this._buildButton.command = 'cmake.build';
@@ -59,28 +88,28 @@ export class StatusBar implements vscode.Disposable {
     this._targetButton.tooltip = 'Click to change the active build target';
     this._debugButton.command = 'cmake.debugTarget';
     this._debugButton.tooltip =
-        'Click to launch the debugger for the selected target';
+      'Click to launch the debugger for the selected target';
     this._debugTargetButton.command = 'cmake.selectLaunchTarget';
     this._debugTargetButton.tooltip = 'Click to select a target for debugging';
     this._environmentSelectionButton.command = 'cmake.selectEnvironments';
     this._environmentSelectionButton.tooltip =
-        'Click to change the active build environments';
-      this.reloadVisibility();
+      'Click to change the active build environments';
+    this.reloadVisibility();
   }
 
   reloadVisibility() {
     const hide = (i: vscode.StatusBarItem) => i.hide();
     const show = (i: vscode.StatusBarItem) => i.show();
     for (const item
-             of [this._cmakeToolsStatusItem, this._buildButton,
-                 this._targetButton, this._testStatusButton,
-                 this._debugTargetButton, this._environmentSelectionButton]) {
+      of [this._cmakeToolsStatusItem, this._buildButton,
+      this._targetButton, this._testStatusButton,
+      this._debugTargetButton, this._environmentSelectionButton]) {
       setVisible(item, this.visible && !!item.text);
     }
     // Debug button is only visible if cpptools is also installed
     setVisible(this._debugButton,
-               this.visible && vscode.extensions.getExtension('ms-vscode.cpptools') !== undefined
-                   && !!this._debugButton.text);
+      this.visible && vscode.extensions.getExtension('ms-vscode.cpptools') !== undefined
+      && !!this._debugButton.text);
   }
 
   /**
@@ -97,8 +126,8 @@ export class StatusBar implements vscode.Disposable {
 
   private _reloadStatusButton() {
     this._cmakeToolsStatusItem.text =
-        `CMake: ${this.projectName}: ${this.buildTypeLabel
-    }: ${this.statusMessage}`;
+      `CMake: ${this.projectName}: ${this.buildTypeLabel
+      }: ${this.statusMessage}`;
   }
 
   /**
@@ -146,10 +175,10 @@ export class StatusBar implements vscode.Disposable {
     if (prog !== null) {
       const bars = prog * 0.4 | 0;
       progress_bar =
-          ` [${Array(bars).join('█')}${Array(40 - bars).join('░')}] ${prog}%`;
+        ` [${Array(bars).join('█')}${Array(40 - bars).join('░')}] ${prog}%`;
     }
     this._buildButton.text =
-        this.isBusy ? `$(x) Stop${progress_bar}` : `$(gear) Build:`;
+      this.isBusy ? `$(x) Stop${progress_bar}` : `$(gear) Build:`;
     this._buildButton.command = this.isBusy ? 'cmake.stop' : 'cmake.build';
     if (this.isBusy) {
       this._buildButton.show();
@@ -242,16 +271,18 @@ export class StatusBar implements vscode.Disposable {
     const good = passing == total;
     const icon = good ? 'check' : 'x';
     this._testStatusButton.text = `$(${icon}) ${passing}/${total} ` +
-        (total == 1 ? 'test' : 'tests') + ' passing';
+      (total == 1 ? 'test' : 'tests') + ' passing';
     this._testStatusButton.color = good ? 'lightgreen' : 'yellow';
   }
 
-  private _testResults: {passing: number,
-                         total: number} = {passing: 0, total: 0};
-  public get testResults(): {passing: number, total: number} {
+  private _testResults: {
+    passing: number,
+    total: number
+  } = { passing: 0, total: 0 };
+  public get testResults(): { passing: number, total: number } {
     return this._testResults;
   }
-  public set testResults(v: {passing: number, total: number}) {
+  public set testResults(v: { passing: number, total: number }) {
     this._testResults = v;
     this._reloadTestButton();
   }
@@ -278,7 +309,7 @@ export class StatusBar implements vscode.Disposable {
     if (this.environmentsAvailable) {
       if (this.activeEnvironments.length) {
         this._environmentSelectionButton.text =
-            `Working in ${this.activeEnvironments.join(', ')}`;
+          `Working in ${this.activeEnvironments.join(', ')}`;
       } else {
         this._environmentSelectionButton.text = 'Select a build environment...';
       }

@@ -48,8 +48,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<CMakeT
         context.subscriptions.push(register('cmake.' + key, cmake[key]));
     }
 
-    await cmake.start();
-
     return cmake;
 }
 

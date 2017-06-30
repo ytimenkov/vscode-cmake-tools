@@ -9,11 +9,15 @@ import * as async from './async';
 import * as path from 'path';
 import { config } from './config';
 import { log } from './logging';
-import { CMakeToolsBackend, CMakeToolsBackendFactory } from './backend';
+import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams } from './backend';
 import { CMake } from './cmake';
 import { VariantManager } from "./variants";
 import { EnvironmentManager } from './environment';
 import { ServerClientCMakeToolsFactory } from './client';
+import { StatusBar, StatusBar2 } from "./status";
+import { Model } from "./model";
+import { CMakeGenerator } from "./api";
+import { spawn } from "child_process";
 
 class UnconfiguredProjectError extends global.Error {
   constructor() {
@@ -27,7 +31,7 @@ class UnconfiguredProjectError extends global.Error {
  */
 function createUnconfiguredBackend(): Promise<CMakeToolsBackend> {
   const result = Promise.reject(new UnconfiguredProjectError());
-  result.catch(() => {});
+  result.catch(() => { });
   return result;
 }
 
@@ -47,6 +51,18 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   private _configureEnvironment = config.configureEnvironment;
 
   constructor(private _ctx: vscode.ExtensionContext) {
+    this.model = new Model();
+    _ctx.subscriptions.push(this.model);
+
+    this.model.onDidBuildDirectoryChange((previousDir) => {
+      if (previousDir !== this.model.buildDirectory) {
+        this.restartBackend();
+      }
+    }, this, _ctx.subscriptions);
+
+    this.statusBar = new StatusBar2(this.model);
+    _ctx.subscriptions.push(this.statusBar);
+
     this.variants = new VariantManager(_ctx);
     this.environments = new EnvironmentManager();
 
@@ -63,9 +79,13 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       this._cmakePath = config.cmakePath;
       this._configureEnvironment = config.configureEnvironment;
       if (do_reload) {
-        await this.restart();
+        // this.restartBackend();
+        this.model.buildDirectory = this.getActiveBinaryDir();
       }
     }));
+
+    // Fire!
+    this.model.buildDirectory = this.getActiveBinaryDir();
   }
 
   /**
@@ -74,8 +94,19 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * Shutdown the backend and dispose of the emitters
    */
   public async dispose() {
-    await this.shutdown();
-    this._reconfiguredEmitter.dispose();
+    try {
+      const backend = await this._backend;
+      log.verbose('Shutting down CMake Tools backend');
+      await backend.dispose();
+      log.verbose('CMake Tools has been stopped');
+    } catch (error) {
+      if (!(error instanceof UnconfiguredProjectError)) {
+        // Something really bad is happened here. dispose() shouldn't really throw.
+        // UnconfiguredProjectError is safe to ignore.
+        log.error(error);
+      }
+    }
+    this._reconfigured.dispose();
     this._targetChangedEventEmitter.dispose();
   }
 
@@ -448,8 +479,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     // return (await this._backend).toggleCoverageDecorations();
   }
 
-  private _reconfiguredEmitter = new vscode.EventEmitter<void>();
-  readonly reconfigured = this._reconfiguredEmitter.event;
+  private _reconfigured = new vscode.EventEmitter<void>();
+  get reconfigured(): vscode.Event<void> { return this._reconfigured.event; }
 
   /**
    * @brief The default target to build when no target is specified
@@ -471,6 +502,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   public readonly variants: VariantManager;
   public readonly environments: EnvironmentManager;
+  private readonly model: Model;
+  private readonly statusBar: StatusBar2;
   public backendFactory?: CMakeToolsBackendFactory;
 
   private async createBackendFactory(): Promise<CMakeToolsBackendFactory> {
@@ -493,56 +526,71 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     throw new Error("Deal with legacy later :D");
   }
 
-  async start(): Promise<void> {
+  /**
+   * Starts backend, but only if project is configured.
+   * For unconfigured project the backend will resolve to rejected promise.
+   */
+  private async startBackend(): Promise<CMakeToolsBackend> {
+    const validateBinaryDir: (dir?: string) => Promise<string | undefined> = async (dir?: string) => {
+      if (!dir) {
+        return undefined;
+      }
+      const exists = await async.exists(CMake.getCachePath(dir));
+      if (!exists)
+        return undefined;
+      return dir;
+    }
+
+    const binaryDir = await validateBinaryDir(this.model.buildDirectory);
+    if (!binaryDir) {
+      this.model.state = "Unconfigured";
+      return createUnconfiguredBackend();
+    }
+
     try {
       if (!this.backendFactory) {
         this.backendFactory = await this.createBackendFactory();
       }
       log.verbose('Starting CMake Tools backend');
+      this.model.state = "Initializing";
 
-      const binaryDir = this.getActiveBinaryDir();
-      const cachePath = CMake.getCachePath(binaryDir);
-      let exists = await async.exists(CMake.getCachePath(binaryDir));
-      if (exists) {
-        this._backend = this.backendFactory.initializeConfigured(binaryDir);
-      }
-      else {
-        // TODO: initialize new.
-      }
+      const backend: CMakeToolsBackend = await this.backendFactory.initializeConfigured(binaryDir);
+      // else {
+      //   let params: InitialConfigureParams = {
+      //     sourceDir: util.normalizePath(util.replaceVars(config.sourceDirectory)),
+      //     binaryDir: binaryDir,
+      //     generator: await this.pickGenerator(),
+      //     settings: this.pickConfigureSettings(),
+      //   };
+      //   backend = await this.backendFactory.initializeNew(params);
+      // }
 
-      const backend = await this._backend;
-      backend.reconfigured(() => this._reconfiguredEmitter.fire(), backend.subscriptions);
+      // TODO: wither provide event, like onDidChangeBackend or a helper function to
+      // update subscriptions.
+      backend.reconfigured(() => this._reconfigured.fire(), backend.subscriptions);
+      log.verbose("Restart is complete");
+      this.model.state = "Ready";
+      return backend;
     } catch (error) {
       log.error(error);
-      // TODO: Is replacing backend with 'Unconfigured' promise needed?
-      // rejection is handled here, just matter of proper shutdown...
+      this.model.state = "Error";
       vscode.window.showErrorMessage(`CMakeTools extension was unable to initialize: ${error} [See output window for more details]`);
+      return createUnconfiguredBackend();
     }
   }
 
-  async shutdown() {
-    try {
-      const backendPromise = this._backend;
-      this._backend = createUnconfiguredBackend();
-
-      const backend = await backendPromise;
-      log.verbose('Shutting down CMake Tools backend');
-      await backend.dispose();
-      log.verbose('CMake Tools has been stopped');
-    } catch (error) {
-      if (!(error instanceof UnconfiguredProjectError)) {
-        // Something really bad is happened here
-        // or backend just failed to initialize.
-        log.error(error);
-      }
-    }
-  }
-
-  async restart(): Promise<void> {
+  public async restartBackend(): Promise<void> {
     log.verbose('Restarting CMake Tools backend');
-    await this.shutdown();
-    await this.start();
-    log.verbose('Restart is complete');
+
+    this._backend = this._backend
+      .then(async (backend) => {
+        log.verbose('Shutting down CMake Tools backend');
+        await backend.dispose();
+        log.verbose('CMake Tools backend has been stopped');
+        return this.startBackend();
+      })
+      .catch(() => this.startBackend());
+    this._backend.catch(() => { });
   }
 
   /**
@@ -584,5 +632,85 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     const binaryDir = util.replaceVars(replacements.reduce(
       (accdir, [needle, what]) => util.replaceAll(accdir, needle, what), config.buildDirectory));
     return util.normalizePath(binaryDir);
+  }
+
+  // Returns the first one available on this system
+  private async pickGenerator(): Promise<CMakeGenerator> {
+    // The user can override our automatic selection logic in their config
+    const generator = config.generator;
+    if (generator) {
+      // User has explicitly requested a certain generator. Use that one.
+      log.verbose(`Using generator from configuration: ${generator}`);
+      return {
+        name: generator,
+        platform: config.platform || undefined,
+        toolset: config.toolset || undefined,
+      };
+    }
+    log.verbose("Trying to detect generator supported by system");
+    const platform = process.platform;
+    const candidates = this.getPreferredGenerators();
+    for (const gen of candidates) {
+      const delegate = {
+        Ninja: async () => {
+          return await this.testHaveCommand('ninja-build') ||
+            await this.testHaveCommand('ninja');
+        },
+        'MinGW Makefiles': async () => {
+          return platform === 'win32' && await this.testHaveCommand('make')
+            || await this.testHaveCommand('mingw32-make');
+        },
+        'NMake Makefiles': async () => {
+          return platform === 'win32' &&
+            await this.testHaveCommand('nmake', ['/?']);
+        },
+        'Unix Makefiles': async () => {
+          return platform !== 'win32' && await this.testHaveCommand('make');
+        }
+      }[gen.name];
+      if (!delegate) {
+        const vsMatch = /^(Visual Studio \d{2} \d{4})($|\sWin64$|\sARM$)/.exec(gen.name);
+        if (platform === 'win32' && vsMatch) {
+          return {
+            name: vsMatch[1],
+            platform: gen.platform || vsMatch[2],
+            toolset: gen.toolset,
+          };
+        }
+        if (gen.name.toLowerCase().startsWith('xcode') && platform === 'darwin') {
+          return gen;
+        }
+        vscode.window.showErrorMessage('Unknown CMake generator "' + gen.name + '"');
+        continue;
+      }
+      if (await delegate.bind(this)()) {
+        return gen;
+      }
+      else {
+        log.info(`Build program for generator ${gen.name} is not found. Skipping...`);
+      }
+    }
+    throw new Error("No suitable generator found on the system.\nDo you have build toolchain installed?");
+
+  }
+
+  private getPreferredGenerators(): CMakeGenerator[] {
+    const configGenerators = config.preferredGenerators.map(g => <CMakeGenerator>{ name: g });
+    return configGenerators.concat(this.environments.preferredEnvironmentGenerators);
+  }
+
+  private async testHaveCommand(program: string, args: string[] = ['--version']): Promise<Boolean> {
+    const env = util.mergeEnvironment(process.env, this.environments.currentEnvironmentVariables);
+    return await new Promise<Boolean>((resolve, _) => {
+      const pipe = spawn(program, args, {
+        env: env
+      });
+      pipe.on('error', () => resolve(false));
+      pipe.on('exit', () => resolve(true));
+    });
+  }
+
+  private pickConfigureSettings(): { [key: string]: (string | number | boolean | string[]) } {
+    return config.configureSettings;
   }
 }
