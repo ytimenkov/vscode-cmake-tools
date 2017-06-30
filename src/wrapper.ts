@@ -19,7 +19,7 @@ import { Model } from "./model";
 import { CMakeGenerator } from "./api";
 import { spawn } from "child_process";
 
-class UnconfiguredProjectError extends global.Error {
+export class UnconfiguredProjectError extends global.Error {
   constructor() {
     super('The project is not configured');
   }
@@ -502,6 +502,10 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   // TODO: public now for testing.
   public readonly model: Model;
+  get backed(): Promise<CMakeToolsBackend> {
+    return this._backend;
+  }
+
   private readonly statusBar: StatusBar2;
   public backendFactory?: CMakeToolsBackendFactory;
 
@@ -543,6 +547,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     const binaryDir = await validateBinaryDir(this.model.buildDirectory);
     if (!binaryDir) {
       this.model.state = "Unconfigured";
+      log.verbose('Build directory is not initialized');
       return createUnconfiguredBackend();
     }
 

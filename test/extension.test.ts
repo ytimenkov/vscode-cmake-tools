@@ -11,12 +11,7 @@ import * as util from '../src/util';
 import * as async from '../src/async';
 
 import * as rimraf from 'rimraf';
-
-const here = __dirname;
-
-function testFilePath(filename: string): string {
-    return path.normalize(path.join(here, '../..', 'test', filename));
-}
+import { Fixture } from "./fixture";
 
 async function getExtension(): Promise<wrapper.CMakeToolsWrapper> {
     const cmt = vscode.extensions.getExtension<wrapper.CMakeToolsWrapper>('vector-of-bool.cmake-tools');
@@ -116,7 +111,7 @@ function smokeTests(context, tag, setupHelper) {
     test(`Pass arguments to debugger [${tag}]`, async function () {
         const retc = await cmt.build();
         assert.strictEqual(retc, 0);
-        const outfile = testFilePath('output-file.txt');
+        const outfile = Fixture.resolvePath('output-file.txt');
         const test_string = 'ceacrybuhksrvniruc48o7dvz';
         await vscode.workspace.getConfiguration('cmake').update('debugConfig', {
             args: [
@@ -137,7 +132,7 @@ function smokeTests(context, tag, setupHelper) {
         assert.strictEqual(retc, 0);
         const homedir_varname = process.platform === 'win32' ? 'USERPROFILE' : 'HOME';
         const homedir_var = process.env[homedir_varname];
-        const outfile = testFilePath('output-file.txt');
+        const outfile = Fixture.resolvePath('output-file.txt');
         await vscode.workspace.getConfiguration('cmake').update('debugConfig', {
             args: [
                 '--write-file', outfile,
@@ -153,7 +148,7 @@ function smokeTests(context, tag, setupHelper) {
     test(`Debugger gets custom environment variables [${tag}]`, async function () {
         const retc = await cmt.build();
         assert.strictEqual(retc, 0);
-        const outfile = testFilePath('output-file.txt');
+        const outfile = Fixture.resolvePath('output-file.txt');
         const test_string = 'ceacrybuhksrvniruc48o7dvz';
         const varname = 'CMTTestEnvironmentVariable';
         await vscode.workspace.getConfiguration('cmake').update('debugConfig', {
@@ -175,20 +170,20 @@ function smokeTests(context, tag, setupHelper) {
     test(`Get compilation info for a file [${tag}]`, async function () {
         const retc = await cmt.configure();
         assert.strictEqual(retc, 0);
-        const info = await cmt.compilationInfoForFile(testFilePath('test_project/main.cpp'));
+        const info = await cmt.compilationInfoForFile(Fixture.resolvePath('test_project/main.cpp'));
         assert(info);
     });
     teardown(async function () {
         const bindir = await cmt.binaryDir;
-        await cmt.shutdown();
+        await cmt.dispose();
         if (fs.existsSync(bindir)) {
             rimraf.sync(bindir);
         }
-        const output_file = testFilePath('output-file.txt');
+        const output_file = Fixture.resolvePath('output-file.txt');
         if (fs.existsSync(output_file)) {
             fs.unlinkSync(output_file);
         }
-        await cmt.start();
+        // await cmt.start();
     });
 };
 // suite('Extension smoke tests [without cmake-server]', function() {

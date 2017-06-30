@@ -9,16 +9,11 @@ import { CMakeCache } from '../src/cache';
 import { Uri } from 'vscode';
 import { CompilationDatabase } from '../src/compdb';
 import { parseGNULDDiagnostic, parseGHSDiagnostic, parseGCCDiagnostic } from "../src/diagnostics";
-
-const here = __dirname;
-
-function testFilePath(filename: string): string {
-    return path.normalize(path.join(here, '../..', 'test', filename));
-}
+import { Fixture } from "./fixture";
 
 suite("Utility tests", () => {
     test("Read CMake Cache", async function () {
-        const cache = await CMakeCache.fromPath(testFilePath('TestCMakeCache.txt'));
+        const cache = await CMakeCache.fromPath(Fixture.resolvePath('TestCMakeCache.txt'));
         const generator = cache.get("CMAKE_GENERATOR") as api.CacheEntry;
         assert.strictEqual(
             generator.type,
@@ -270,7 +265,7 @@ suite("Utility tests", () => {
         assert.strictEqual(diags[2], null);
     });
     test('Parsing compilation databases', () => {
-        const dbpath = testFilePath('test_compdb.json');
+        const dbpath = Fixture.resolvePath('test_compdb.json');
         return CompilationDatabase.fromFilePath(dbpath).then(db => {
             assert(db);
             if (db) {
