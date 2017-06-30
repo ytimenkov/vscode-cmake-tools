@@ -46,7 +46,7 @@ suite.only('Smoke tests', async function () {
         cmt.model.buildDirectory = undefined;
 
         // This waits until backend is shut down before removing build directory.
-        await assert.isRejected(cmt.backed, UnconfiguredProjectError);
+        await assert.isRejected(cmt.backend, UnconfiguredProjectError);
         if (cleanupFolders.length > 0) {
             await Promise.all(cleanupFolders.map((path) => rmdir(path)));
         }

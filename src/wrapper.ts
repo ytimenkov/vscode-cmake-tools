@@ -95,7 +95,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    */
   public async dispose() {
     try {
-      const backend = await this._backend;
+      const backend = await this.backend;
       log.verbose('Shutting down CMake Tools backend');
       await backend.dispose();
       log.verbose('CMake Tools has been stopped');
@@ -114,7 +114,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * sourceDir: Promise<string>
    */
   private async _sourceDir(): Promise<string> {
-    return (await this._backend).sourceDir;
+    return (await this.backend).sourceDir;
   }
   get sourceDir(): Promise<string> {
     return this._sourceDir();
@@ -124,7 +124,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * mainListFile: Promise<string>
    */
   private async _mainListFile(): Promise<string> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     return CMake.getMainListFile(backend.sourceDir);
   }
   get mainListFile(): Promise<string> {
@@ -142,7 +142,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * cachePath: Promise<string>
    */
   private async _cachePath(): Promise<string> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     return CMake.getCachePath(backend.binaryDir);
   }
   get cachePath(): Promise<string> {
@@ -153,7 +153,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * executableTargets: Promise<ExecutableTarget[]>
    */
   private async _executableTargets(): Promise<api.ExecutableTarget[]> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     return backend.targets.reduce<api.ExecutableTarget[]>(
       (acc, target) => {
         if (target.type === 'rich') {
@@ -171,7 +171,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * diagnostics: Promise<DiagnosticCollection[]>
    */
   private async _diagnostics(): Promise<vscode.DiagnosticCollection> {
-    return (await this._backend).diagnostics;
+    return (await this.backend).diagnostics;
   }
   get diagnostics(): Promise<vscode.DiagnosticCollection> {
     return this._diagnostics();
@@ -181,7 +181,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * targets: Promise<Target[]>
    */
   private async _targets(): Promise<api.Target[]> {
-    return (await this._backend).targets;
+    return (await this.backend).targets;
   }
   get targets(): Promise<api.Target[]> {
     return this._targets();
@@ -195,26 +195,34 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     Promise<api.ExecutionResult> {
     // TODO:
     return Promise.reject(new Error("Not implemented"));
-    //    return (await this._backend).execute(program, args, options);
+    //    return (await this.backend).execute(program, args, options);
   }
 
   async compilationInfoForFile(filepath: string): Promise<api.CompilationInfo | null> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     return backend.compilationInfoForFile(filepath);
   }
 
   async configure(extraArgs?: string[], runPrebuild?: boolean): Promise<number> {
     // TODO: Progress and cancellation.
-    // TODO: This should really work for unconfigured project too.
-    // Write test for it.
-    const backend = await this._backend;
-    const result = await backend.configure(extraArgs);
+    let result: boolean = false;
+    try {
+      const backend = await this.backend;
+      result = await backend.configure(extraArgs);
+    } catch (error) {
+      if (error instanceof UnconfiguredProjectError) {
+        result = await this.configureNewProject(extraArgs);
+      }
+      else {
+        throw error;
+      }
+    }
     return result ? 0 : 1;
   }
 
   async build(target?: string): Promise<number> {
     // TODO: Progress and cancellation.
-    const backend = await this._backend;
+    const backend = await this.backend;
     const result = await backend.build(target);
     return result ? 0 : 1;
   }
@@ -246,7 +254,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   async cleanConfigure(): Promise<number> {
     // TODO: Write test that clean configure is available for an empty project.
-    const backend = await this._backend;
+    const backend = await this.backend;
     const binaryDir = backend.binaryDir;
     const cachePath = CMake.getCachePath(binaryDir);
     const cmakeFiles = path.join(binaryDir, 'CMakeFiles');
@@ -263,7 +271,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   async cleanRebuild(): Promise<number> {
     // TODO: Test that short-circuit works. Or at least in normal way.
-    const backend = await this._backend;
+    const backend = await this.backend;
     const result = await backend.build("clean") && await backend.build();
     return result ? 0 : 1;
   }
@@ -308,7 +316,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     try {
       // TODO: Should it be handled differently? If backed is initialized with some source dir
       // which is not config.sourceDirectory ? Just refuse as well?
-      const backend = await this._backend;
+      const backend = await this.backend;
       exists = await async.exists(CMake.getMainListFile(backend.sourceDir));
     } catch (error) {
       // It's perfectly fine to be unconfigured.
@@ -401,7 +409,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   async debugTarget(): Promise<void> {
     // TODO: defaultLaunchTarget may need to be a promise, if we want to wait
     // until backend initializes.
-    const backend = await this._backend;
+    const backend = await this.backend;
     const target = this.defaultLaunchTarget;
 
     if (!target) {
@@ -415,7 +423,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   }
 
   async launchTarget(): Promise<void> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     const target = this.defaultLaunchTarget;
 
     if (!target)
@@ -433,12 +441,12 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   async launchTargetProgramPath(): Promise<string | null> {
     // TODO: await on backend to wait for initialization.
-    await this._backend;
+    await this.backend;
     return this.defaultLaunchTarget ? this.defaultLaunchTarget.path : null;
   }
 
   async selectLaunchTarget(): Promise<string | null> {
-    const backend = await this._backend;
+    const backend = await this.backend;
     const executableTargets = await this.executableTargets;
     if (!executableTargets) {
       vscode.window.showWarningMessage(backend.noExecutablesMessage);
@@ -502,7 +510,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   // TODO: public now for testing.
   public readonly model: Model;
-  get backed(): Promise<CMakeToolsBackend> {
+  get backend(): Promise<CMakeToolsBackend> {
     return this._backend;
   }
 
@@ -535,11 +543,11 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    */
   private async startBackend(): Promise<CMakeToolsBackend> {
     const validateBinaryDir: (dir?: string) => Promise<string | undefined> = async (dir?: string) => {
-      if (!dir) {
+      if (!dir)
         return undefined;
-      }
-      const exists = await async.exists(CMake.getCachePath(dir));
-      if (!exists)
+
+      const cacheExists = await async.exists(CMake.getCachePath(dir));
+      if (!cacheExists)
         return undefined;
       return dir;
     }
@@ -559,15 +567,6 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       this.model.state = "Initializing";
 
       const backend: CMakeToolsBackend = await this.backendFactory.initializeConfigured(binaryDir);
-      // else {
-      //   let params: InitialConfigureParams = {
-      //     sourceDir: util.normalizePath(util.replaceVars(config.sourceDirectory)),
-      //     binaryDir: binaryDir,
-      //     generator: await this.pickGenerator(),
-      //     settings: this.pickConfigureSettings(),
-      //   };
-      //   backend = await this.backendFactory.initializeNew(params);
-      // }
 
       // TODO: wither provide event, like onDidChangeBackend or a helper function to
       // update subscriptions.
@@ -579,7 +578,55 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       log.error(error);
       this.model.state = "Error";
       vscode.window.showErrorMessage(`CMakeTools extension was unable to initialize: ${error} [See output window for more details]`);
-      return createUnconfiguredBackend();
+      throw error;
+    }
+  }
+
+  /**
+   * Initializes new build directory.
+   * Build directory shouldn't contain CMakeCache.txt.
+   */
+  private async startBackendUnconfigured(extraArgs?: string[]): Promise<CMakeToolsBackend> {
+    const validateBinaryDir: (dir?: string) => Promise<string> = async (dir?: string) => {
+      if (!dir) {
+        throw new Error("Build directory is not properly configured");
+      }
+      const cacheExists = await async.exists(CMake.getCachePath(dir));
+      if (cacheExists)
+        throw new Error(`Directory ${dir} already contains CMakeCache.txt. Please run Clean Configure or use another directory`);
+      return dir;
+    }
+
+    const binaryDir = await validateBinaryDir(this.model.buildDirectory);
+
+    if (!this.backendFactory) {
+      this.backendFactory = await this.createBackendFactory();
+    }
+
+    let params: InitialConfigureParams = {
+      sourceDir: util.normalizePath(util.replaceVars(config.sourceDirectory)),
+      binaryDir: binaryDir,
+      generator: await this.pickGenerator(),
+      settings: this.pickConfigureSettings(),
+    };
+    const backend = await this.backendFactory.initializeNew(params);
+
+    // TODO: wither provide event, like onDidChangeBackend or a helper function to
+    // update subscriptions.
+    backend.reconfigured(() => this._reconfigured.fire(), backend.subscriptions);
+
+    return backend;
+  }
+
+  private async configureNewProject(extraArgs?: string[]): Promise<boolean> {
+    this._backend = this.startBackendUnconfigured(extraArgs);
+    try {
+      await this._backend;
+      return true;
+    } catch (error) {
+      vscode.window.showErrorMessage(`Configure failed: ${error} [See output window for more details]`);
+      this._backend = createUnconfiguredBackend();
+      return false;
     }
   }
 
@@ -594,12 +641,14 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
         return this.startBackend();
       })
       .catch(() => this.startBackend());
+    // The error is either handled in startBackend or is UnconfiguredProjectError
+    // or will be shown later.
     this._backend.catch(() => { });
   }
 
   /**
- * Shows a QuickPick containing the available build targets.
- */
+   * Shows a QuickPick containing the available build targets.
+   */
   private async showTargetSelector(): Promise<string | null> {
     const targets = await this.targets;
     if (!targets.length) {
