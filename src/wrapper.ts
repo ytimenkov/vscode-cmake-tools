@@ -134,11 +134,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   /**
    * binaryDir: Promise<string>
    */
-  private async _binaryDir(): Promise<string> {
-    return (await this._backend).binaryDir;
-  }
   get binaryDir(): Promise<string> {
-    return this._binaryDir();
+    return Promise.resolve(this.model.buildDirectory);
   }
 
   /**
@@ -502,7 +499,9 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
 
   public readonly variants: VariantManager;
   public readonly environments: EnvironmentManager;
-  private readonly model: Model;
+
+  // TODO: public now for testing.
+  public readonly model: Model;
   private readonly statusBar: StatusBar2;
   public backendFactory?: CMakeToolsBackendFactory;
 
