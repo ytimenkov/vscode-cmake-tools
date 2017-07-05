@@ -9,6 +9,7 @@ import { config } from './config';
 import { log } from './logging';
 import * as util from './util';
 import { CMakeGenerator } from './api';
+import { mergeEnvironment } from "./util";
 
 const MESSAGE_WRAPPER_RE =
   /\[== "CMake Server" ==\[([^]*?)\]== "CMake Server" ==\]\s*([^]*)/;
@@ -364,7 +365,7 @@ export interface ClientInit {
   environment: { [key: string]: string };
   sourceDir: string;
   binaryDir: string;
-  pickGenerator: () => Promise<util.Maybe<CMakeGenerator>>;
+  generator?: CMakeGenerator;
 }
 
 interface ClientInitPrivate extends ClientInit {
@@ -561,10 +562,11 @@ export class CMakeServerClient {
     } else {
       pipe_file = path.join(params.binaryDir, `.cmserver.${process.pid}`);
     }
+    const final_env = mergeEnvironment(process.env, params.environment);
     const child = this._proc = proc.spawn(
       params.cmakePath,
       ['-E', 'server', '--experimental', `--pipe=${pipe_file}`], {
-        env: params.environment,
+        env: final_env,
       });
     log.info(`Started new CMake Server instance with PID ${child.pid}`);
     child.stdout.on('data', this._onErrorData.bind(this));
@@ -616,7 +618,7 @@ export class CMakeServerClient {
         environment: params.environment,
         onProgress: params.onProgress,
         onDirty: params.onDirty,
-        pickGenerator: params.pickGenerator,
+        generator: params.generator,
         onCrash: async (retc) => {
           if (!resolved) {
             reject(new StartupError(retc));
@@ -625,12 +627,12 @@ export class CMakeServerClient {
         onHello: async (msg: HelloMessage) => {
           // We've gotten the hello message. We need to commense handshake
           try {
-            const generator = await params.pickGenerator();
             let hsparams: HandshakeParams = {
               buildDirectory: params.binaryDir,
               protocolVersion: msg.supportedProtocolVersions[0],
               sourceDirectory: params.sourceDir
             };
+            const generator = params.generator;
             if (generator) {
               hsparams.generator = generator.name;
               hsparams.platform = generator.platform;

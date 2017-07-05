@@ -586,7 +586,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * Initializes new build directory.
    * Build directory shouldn't contain CMakeCache.txt.
    */
-  private async startBackendUnconfigured(extraArgs?: string[]): Promise<CMakeToolsBackend> {
+  private async startBackendForNewProject(extraArgs?: string[]): Promise<CMakeToolsBackend> {
     const validateBinaryDir: (dir?: string) => Promise<string> = async (dir?: string) => {
       if (!dir) {
         throw new Error("Build directory is not properly configured");
@@ -602,11 +602,13 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     if (!this.backendFactory) {
       this.backendFactory = await this.createBackendFactory();
     }
+    const generator = await this.pickGenerator();
+    log.verbose(`Configuring using CMake generator ${generator.name}`);
 
     let params: InitialConfigureParams = {
       sourceDir: util.normalizePath(util.replaceVars(config.sourceDirectory)),
       binaryDir: binaryDir,
-      generator: await this.pickGenerator(),
+      generator: generator,
       settings: this.pickConfigureSettings(),
     };
     const backend = await this.backendFactory.initializeNew(params);
@@ -619,10 +621,10 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   }
 
   private async configureNewProject(extraArgs?: string[]): Promise<boolean> {
-    this._backend = this.startBackendUnconfigured(extraArgs);
+    this._backend = this.startBackendForNewProject(extraArgs);
     try {
-      await this._backend;
-      return true;
+      const backend = await this._backend;
+      return backend.configure(extraArgs);
     } catch (error) {
       vscode.window.showErrorMessage(`Configure failed: ${error} [See output window for more details]`);
       this._backend = createUnconfiguredBackend();

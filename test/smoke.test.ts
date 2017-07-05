@@ -7,7 +7,7 @@ import { Fixture } from "./fixture";
 
 use(chaiAsPromised);
 
-suite.only('Smoke tests', async function () {
+suite('Integration tests', async function () {
     this.timeout(60 * 1000);
 
     let cmt: CMakeToolsWrapper;
@@ -40,6 +40,11 @@ suite.only('Smoke tests', async function () {
 
         cmt.model.buildDirectory = buildDir;
         await assert.eventually.equal(cmt.configure(), 0);
+        // TODO: check that project name is TestProject
+        //await assert.eventually.equal(cmt.model.)
+        assert.include(await cmt.sourceDir, "test_project");
+        assert.equal(await cmt.binaryDir, buildDir);
+        assert.include(await cmt.mainListFile, "test_project/CMakeLists.txt");
     });
 
     teardown(async function () {

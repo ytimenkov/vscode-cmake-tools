@@ -12,7 +12,7 @@ import { config } from './config';
 import * as cms from './server-client';
 import { log } from './logging';
 import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams, ProgressHandler } from './backend';
-import { CancellationToken, DiagnosticCollection, Disposable, EventEmitter } from 'vscode';
+import { CancellationToken, DiagnosticCollection, Disposable, EventEmitter, languages } from 'vscode';
 import { CMake } from './cmake'
 
 export class ServerClientCMakeTools implements CMakeToolsBackend {
@@ -21,10 +21,9 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
   // TODO: Initialize these.
   sourceDir: string;
   binaryDir: string;
-  diagnostics: DiagnosticCollection;
+  diagnostics: DiagnosticCollection = languages.createDiagnosticCollection('cmake-build-diags');;
   generator: api.CMakeGenerator;
 
-  private _globalSettings: cms.GlobalSettingsContent;
   private _dirty = true;
   private _cacheEntries = new Map<string, cache.Entry>();
   private _accumulatedMessages: string[] = [];
@@ -43,22 +42,28 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     const backend = new ServerClientCMakeTools(client);
     // await super._init();
     // await this._restartClient();
-    backend._globalSettings = await client.getGlobalSettings();
+    const globalSettings = await client.getGlobalSettings();
+    backend.generator = {
+      name: globalSettings.generator
+    };
+    backend.binaryDir = globalSettings.buildDirectory;
+    backend.sourceDir = globalSettings.sourceDirectory;
+
     // this.codeModel = this._workspaceCacheContent.codeModel || null;
     // this._statusBar.statusMessage = 'Ready';
     // this._statusBar.isBusy = false;
     // if (this.executableTargets.length > 0) {
     //   this.currentLaunchTarget = this.executableTargets[0].name;
     // }
-    try {
-      await backend._refreshAfterConfigure();
-    } catch (e) {
-      if (e instanceof cms.ServerError) {
-        // Do nothing
-      } else {
-        throw e;
-      }
-    }
+    // try {
+    //   await backend._refreshAfterConfigure();
+    // } catch (e) {
+    //   if (e instanceof cms.ServerError) {
+    //     // Do nothing
+    //   } else {
+    //     throw e;
+    //   }
+    // }
     return backend;
   }
 
@@ -77,20 +82,12 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
   }
 
   async dispose() {
-    await Promise.all(this.subscriptions);
+    await Promise.all(this.subscriptions.map(d => d.dispose()));
     await this.client.shutdown();
   }
 
   private _reconfiguredEmitter = new EventEmitter<void>();
   public get reconfigured() { return this._reconfiguredEmitter.event; }
-
-  get executableTargets() {
-    return this.targets.filter(t => t.targetType === 'EXECUTABLE')
-      .map(t => ({
-        name: t.name,
-        path: t.filepath,
-      }));
-  }
 
   public markDirty() {
     this._dirty = true;
@@ -118,9 +115,6 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     return this._dirty;
   }
 
-  get activeGenerator() {
-    return this._globalSettings ? this._globalSettings.generator : null;
-  }
 
   allCacheEntries(): api.CacheEntryProperties[] {
     return Array.from(this._cacheEntries.values()).map(e => ({
@@ -210,7 +204,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     // this.statusMessage = 'Configuring...';
 
     const parser = new diagnostics.BuildParser(
-      this.binaryDir, ['cmake'], this.activeGenerator);
+      this.binaryDir, ['cmake'], this.generator.name);
 
     const parseMessages = () => {
       for (const msg of this._accumulatedMessages) {
@@ -333,7 +327,7 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
     }
 
     const client = await cms.CMakeServerClient.start({
-      binaryDir: binaryDir,
+      binaryDir: util.normalizePath(binaryDir),
       sourceDir: sourceDir.as<string>(),
       cmakePath: config.cmakePath,
       environment: util.mergeEnvironment(
@@ -352,8 +346,7 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
         // this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
         //   (prog.progressMaximum - prog.progressMinimum);
         // this.statusMessage = prog.progressMessage;
-      },
-      pickGenerator: () => Promise.resolve(null),
+      }
     });
 
     return this.createBackend(client);
@@ -361,7 +354,7 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
 
   async initializeNew(params: InitialConfigureParams): Promise<CMakeToolsBackend> {
     const client = await cms.CMakeServerClient.start({
-      binaryDir: params.binaryDir,
+      binaryDir: util.normalizePath(params.binaryDir),
       sourceDir: params.sourceDir,
       cmakePath: config.cmakePath,
       environment: util.mergeEnvironment(
@@ -381,7 +374,7 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
         //   (prog.progressMaximum - prog.progressMinimum);
         // this.statusMessage = prog.progressMessage;
       },
-      pickGenerator: () => Promise.resolve(params.generator),
+      generator: params.generator,
     });
     return this.createBackend(client);
   }
