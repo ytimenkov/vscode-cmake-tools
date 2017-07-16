@@ -1,11 +1,8 @@
 import { CMakeToolsWrapper, UnconfiguredProjectError } from "../src/wrapper";
 import { extensions } from "vscode";
 import { assert, use } from "chai";
-import chaiAsPromised = require("chai-as-promised");
 import { rmdir } from "../src/util";
 import { Fixture } from "./fixture";
-
-use(chaiAsPromised);
 
 suite('Integration tests', async function () {
     this.timeout(60 * 1000);
@@ -39,7 +36,7 @@ suite('Integration tests', async function () {
         cleanupFolders.push(buildDir);
 
         cmt.model.buildDirectory = buildDir;
-        await assert.eventually.equal(cmt.configure(), 0);
+        assert.equal(await cmt.configure(), 0);
         // TODO: check that project name is TestProject
         //await assert.eventually.equal(cmt.model.)
         assert.include(await cmt.sourceDir, "test_project");
@@ -51,7 +48,7 @@ suite('Integration tests', async function () {
         cmt.model.buildDirectory = undefined;
 
         // This waits until backend is shut down before removing build directory.
-        await assert.isRejected(cmt.backend, UnconfiguredProjectError);
+        await cmt.backend.catch(e => assert.instanceOf(e, UnconfiguredProjectError));
         if (cleanupFolders.length > 0) {
             await Promise.all(cleanupFolders.map((path) => rmdir(path)));
         }

@@ -74,7 +74,7 @@ export interface ReplyMessage extends CookiedMessage { inReplyTo: string; }
  * Progress messages are sent regarding some long-running request process before
  * the reply is ready.
  */
-export interface ProgressMessage extends MessageBase {
+export interface ProgressMessage extends ReplyMessage {
   type: 'progress';
   progressMessage: string;
   progressMinimum: number;
@@ -398,6 +398,7 @@ export class ServerError extends global.Error implements ErrorMessage {
 interface MessageResolutionCallbacks {
   resolve: (a: SomeReplyMessage) => void;
   reject: (b: ServerError) => void;
+  progress?: (p: ProgressMessage) => void;
 }
 
 
@@ -433,39 +434,7 @@ export class CMakeServerClient {
 
   private _dispatchProgress(m: ProgressMessage) { }
 
-  private _takePromiseForCookie(cookie: string): MessageResolutionCallbacks {
-    const item = this._promisesResolvers.get(cookie);
-    if (!item) {
-      throw new global.Error('Invalid cookie: ' + cookie);
-    }
-    this._promisesResolvers.delete(cookie);
-    return item;
-  }
-
   private _onMessage(some: SomeMessage): void {
-    if ('cookie' in some) {
-      const cookied = some as CookiedMessage;
-      switch (some.type) {
-        case 'reply': {
-          const reply = cookied as SomeReplyMessage;
-          this._takePromiseForCookie(cookied.cookie).resolve(reply);
-          return;
-        }
-        case 'error': {
-          const err = new ServerError(cookied as ErrorMessage);
-          this._takePromiseForCookie(cookied.cookie).reject(err);
-          return;
-        }
-        case 'progress': {
-          const prog = cookied as any as ProgressMessage;
-          this._params.onProgress(prog).catch(e => {
-            console.error('Unandled error in onProgress', e);
-          });
-          return;
-        }
-      }
-    }
-
     switch (some.type) {
       case 'hello': {
         this._params.onHello(some as HelloMessage).catch(e => {
@@ -494,25 +463,59 @@ export class CMakeServerClient {
         }
       }
     }
+    if ('cookie' in some) {
+      const cookied = some as CookiedMessage;
+      const handler = this._promisesResolvers.get(cookied.cookie);
+      if (!handler) {
+        log.verbose(`Received message with invalid cookie: ${cookied}, msg: ${JSON.stringify(some)}`);
+        return;
+      }
+      switch (some.type) {
+        case 'reply': {
+          const reply = cookied as SomeReplyMessage;
+          this._promisesResolvers.delete(cookied.cookie);
+          handler.resolve(reply);
+          return;
+        }
+        case 'error': {
+          const err = new ServerError(cookied as ErrorMessage);
+          this._promisesResolvers.delete(cookied.cookie);
+          handler.reject(err);
+          return;
+        }
+        case 'progress': {
+          if (handler.progress) {
+            const prog = cookied as ProgressMessage;
+            try {
+              handler.progress(prog);
+            } catch (e) {
+              console.error('Unandled error in onProgress', e);
+            }
+          }
+          return;
+        }
+      }
+    }
+
     debugger;
     console.warn(`Can't yet handle the ${some.type} messages`);
   }
 
-  sendRequest(t: 'handshake', p: HandshakeParams): Promise<HandshakeContent>;
-  sendRequest(t: 'globalSettings', p?: GlobalSettingsParams):
+  sendRequest(t: 'handshake', p: HandshakeParams, progress?: (pm: ProgressMessage) => void): Promise<HandshakeContent>;
+  sendRequest(t: 'globalSettings', p?: GlobalSettingsParams, progress?: (pm: ProgressMessage) => void):
     Promise<GlobalSettingsContent>;
-  sendRequest(t: 'setGlobalSettings', p: SetGlobalSettingsParams):
+  sendRequest(t: 'setGlobalSettings', p: SetGlobalSettingsParams, progress?: (pm: ProgressMessage) => void):
     Promise<SetGlobalSettingsContent>;
-  sendRequest(t: 'configure', p: ConfigureParams): Promise<ConfigureContent>;
-  sendRequest(t: 'compute', p?: ComputeParams): Promise<ComputeContent>;
-  sendRequest(t: 'codemodel', p?: CodeModelParams): Promise<CodeModelContent>;
-  sendRequest(T: 'cache', p?: CacheParams): Promise<CacheContent>;
-  sendRequest(type: string, params: any = {}): Promise<any> {
-    const cp = Object.assign({ type }, params);
-    const cookie = cp.cookie = Math.random().toString();
+  sendRequest(t: 'configure', p: ConfigureParams, progress?: (pm: ProgressMessage) => void): Promise<ConfigureContent>;
+  sendRequest(t: 'compute', p?: ComputeParams, progress?: (pm: ProgressMessage) => void): Promise<ComputeContent>;
+  sendRequest(t: 'codemodel', p?: CodeModelParams, progress?: (pm: ProgressMessage) => void): Promise<CodeModelContent>;
+  sendRequest(T: 'cache', p?: CacheParams, progress?: (pm: ProgressMessage) => void): Promise<CacheContent>;
+  sendRequest(type: string, params: any = {}, progress?: (pm: ProgressMessage) => void): Promise<any> {
+    const cookie = Math.random().toString();
     const pr = new Promise((resolve, reject) => {
-      this._promisesResolvers.set(cookie, { resolve: resolve, reject: reject });
+      this._promisesResolvers.set(cookie, { resolve: resolve, reject: reject, progress });
     });
+    const cp = { ...params, type, cookie };
     const msg = JSON.stringify(cp);
     console.log(`Sending message to cmake-server: ${msg}`);
     this._pipe.write('\n[== "CMake Server" ==[\n');
@@ -533,12 +536,12 @@ export class CMakeServerClient {
     return this.sendRequest('globalSettings');
   }
 
-  configure(params: ConfigureParams): Promise<ConfigureContent> {
-    return this.sendRequest('configure', params);
+  configure(params: ConfigureParams, progress?: (pm: ProgressMessage) => void): Promise<ConfigureContent> {
+    return this.sendRequest('configure', params, progress);
   }
 
-  compute(params?: ComputeParams): Promise<ComputeParams> {
-    return this.sendRequest('compute', params);
+  compute(params?: ComputeParams, progress?: (pm: ProgressMessage) => void): Promise<ComputeParams> {
+    return this.sendRequest('compute', params, progress);
   }
 
   codemodel(params?: CodeModelParams): Promise<CodeModelContent> {

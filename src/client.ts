@@ -214,12 +214,16 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
       }
       parser.fillDiagnosticCollection(this.diagnostics);
     };
+    let progress: ((pm: cms.ProgressMessage) => void) | undefined = undefined;
+    if (progressHandler) {
+      progress = (pm: cms.ProgressMessage) => progressHandler((pm.progressCurrent - pm.progressMinimum) / (pm.progressMaximum - pm.progressMinimum));
+    }
 
     try {
       this._accumulatedMessages = [];
       const args = extraArgs || [];
-      await this.client.configure({ cacheArguments: args });
-      await this.client.compute();
+      await this.client.configure({ cacheArguments: args }, progress);
+      await this.client.compute(progress);
       parseMessages();
     } catch (e) {
       if (e instanceof cms.ServerError) {

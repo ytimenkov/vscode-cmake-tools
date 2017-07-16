@@ -1,5 +1,4 @@
 import { assert, use } from "chai";
-import chaiAsPromised = require("chai-as-promised");
 import { rmdir } from "../src/util";
 import { Fixture } from "./fixture";
 import { ServerClientCMakeToolsFactory } from "../src/client";
@@ -7,8 +6,7 @@ import { InitialConfigureParams, CMakeToolsBackend } from "../src/backend";
 import { Disposable } from "vscode";
 import { CMakeGenerator } from "../src/api";
 import { exists } from "../src/async";
-
-use(chaiAsPromised);
+import * as sinon from "Sinon";
 
 /**
  * Generator which will be used in test.
@@ -115,5 +113,17 @@ suite.only('Backend tests', async function () {
         const execTarget = backend.targets.find(t => t.name === 'MyExecutable');
         assert.isOk(execTarget, 'MyExecutable target should be reported');
     });
+
+    test.only('Configure reports progress', async function () {
+        const backend = await factory.initializeConfigured(binaryDir);
+        disposables.push(backend);
+
+        let progressCb = sinon.spy();
+
+        assert.isTrue(await backend.configure(undefined, progressCb));
+
+        sinon.assert.calledWithMatch(progressCb, (p) => (p >= 0 && p <= 100));
+    });
+
 
 });
