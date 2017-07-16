@@ -3,7 +3,6 @@
 import * as vscode from 'vscode';
 
 import * as api from './api';
-import * as legacy from './legacy';
 import * as util from './util';
 import * as async from './async';
 import * as path from 'path';

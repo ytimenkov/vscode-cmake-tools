@@ -7,7 +7,6 @@ import * as diagnostics from './diagnostics';
 import * as async from './async';
 import * as cache from './cache';
 import * as util from './util';
-import * as common from './common';
 import { config } from './config';
 import * as cms from './server-client';
 import { log } from './logging';

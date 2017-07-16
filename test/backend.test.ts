@@ -6,6 +6,7 @@ import { ServerClientCMakeToolsFactory } from "../src/client";
 import { InitialConfigureParams, CMakeToolsBackend } from "../src/backend";
 import { Disposable } from "vscode";
 import { CMakeGenerator } from "../src/api";
+import { exists } from "../src/async";
 
 use(chaiAsPromised);
 
@@ -17,30 +18,27 @@ const cmakeGenerator: CMakeGenerator = {
     name: "Ninja"
 }
 
-suite.only('Backend tests', async function () {
+/**
+ * Set to true to reuse existing build directory in backend tests.
+ * (Useful for debuggign tests).
+ */
+const quickSetup: boolean = true;
+
+suite('Backend: Unconfigured project', async function () {
     this.timeout(60 * 1000);
 
-    // Array of folders to clean up in tear down method.
-    let cleanupFolders: string[] = [];
-    let disposables: Disposable[] = [];
-
+    const binaryDir: string = Fixture.resolvePath('test_project/build-new');
     const factory = new ServerClientCMakeToolsFactory();
-
-    setup(function () {
-        cleanupFolders = [];
-        disposables = [];
-    });
+    let backend: CMakeToolsBackend;
 
     test('Initializes new project', async function () {
         // TODO: Progress? test on progress?
         const params: InitialConfigureParams = {
             sourceDir: Fixture.resolvePath('test_project'),
-            binaryDir: Fixture.resolvePath('test_project/build-new'),
+            binaryDir: binaryDir,
             generator: cmakeGenerator
         };
-        cleanupFolders.push(params.binaryDir);
-        const backend = await factory.initializeNew(params);
-        disposables.push(backend);
+        backend = await factory.initializeNew(params);
 
         assert.include(backend.sourceDir, 'test_project');
         assert.include(backend.binaryDir, 'build-new');
@@ -53,11 +51,69 @@ suite.only('Backend tests', async function () {
     });
 
     teardown(async function () {
+        if (backend) {
+            await backend.dispose();
+        }
+        await rmdir(binaryDir);
+    });
+});
+
+suite.only('Backend tests', async function () {
+    this.timeout(60 * 1000);
+
+    // Array of folders to clean up in tear down method.
+    let disposables: Disposable[] = [];
+
+    const factory = new ServerClientCMakeToolsFactory();
+    const binaryDir: string = Fixture.resolvePath('test_project/build-backend');
+
+    suiteSetup(async function () {
+        if (quickSetup && await exists(binaryDir))
+            return;
+
+        const params: InitialConfigureParams = {
+            sourceDir: Fixture.resolvePath('test_project'),
+            binaryDir: binaryDir,
+            generator: cmakeGenerator
+        };
+        const backend = await factory.initializeNew(params);
+        try {
+            assert.isTrue(await backend.configure());
+        }
+        finally {
+            await backend.dispose();
+        }
+    });
+
+    suiteTeardown(async function () {
+        if (!quickSetup)
+            await rmdir(binaryDir);
+    });
+
+    setup(function () {
+        disposables = [];
+    });
+
+    teardown(async function () {
         if (disposables.length > 0) {
             await Promise.all(disposables.map(d => d.dispose()));
         }
-        if (cleanupFolders.length > 0) {
-            await Promise.all(cleanupFolders.map((path) => rmdir(path)));
-        }
     });
+
+    test('Can open existing folder', async function () {
+        const backend = await factory.initializeConfigured(binaryDir);
+        disposables.push(backend);
+        assert.include(backend.sourceDir, 'test_project');
+    });
+
+    test('Can configure with default args', async function () {
+        const backend = await factory.initializeConfigured(binaryDir);
+        disposables.push(backend);
+
+        assert.isTrue(await backend.configure());
+
+        const execTarget = backend.targets.find(t => t.name === 'MyExecutable');
+        assert.isOk(execTarget, 'MyExecutable target should be reported');
+    });
+
 });
