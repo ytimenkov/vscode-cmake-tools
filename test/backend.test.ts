@@ -1,21 +1,21 @@
-import { assert, use } from "chai";
+import { assert } from "chai";
 import { rmdir } from "../src/util";
-import { Fixture } from "./fixture";
+import { Fixture, BackendFixture } from "./fixture";
 import { ServerClientCMakeToolsFactory } from "../src/client";
-import { InitialConfigureParams, CMakeToolsBackend, ProgressHandler } from "../src/backend";
+import { BackendNewInitializationParams, CMakeToolsBackend } from "../src/backend";
 import { Disposable } from "vscode";
 import { CMakeGenerator } from "../src/api";
 import { exists } from "../src/async";
 import * as sinon from "Sinon";
 
-sinon.assert.expose(assert, { prefix: "" });
+sinon.assert.expose(assert, { prefix: '' });
 
 /**
  * Generator which will be used in test.
  * Please adapt to the one available on your system when running test.
  */
 const cmakeGenerator: CMakeGenerator = {
-    name: "Ninja"
+    name: 'Ninja'
 }
 
 /**
@@ -24,7 +24,7 @@ const cmakeGenerator: CMakeGenerator = {
  */
 const quickSetup: boolean = true;
 
-const is0To1Ratio = sinon.match((n) => (0 <= n && n <= 1), "Number between 0 and 1");
+const is0To1Ratio = sinon.match((n) => (0 <= n && n <= 1), 'Number between 0 and 1');
 
 suite('Backend: Unconfigured project', async function () {
     this.timeout(60 * 1000);
@@ -33,14 +33,14 @@ suite('Backend: Unconfigured project', async function () {
     const factory = new ServerClientCMakeToolsFactory();
     let backend: CMakeToolsBackend;
 
+    const fixture = () => {
+        return new BackendFixture(factory)
+            .binaryDir(binaryDir)
+            .generator(cmakeGenerator);
+    }
+
     test('Initializes new project', async function () {
-        // TODO: Progress? test on progress?
-        const params: InitialConfigureParams = {
-            sourceDir: Fixture.resolvePath('test_project'),
-            binaryDir: binaryDir,
-            generator: cmakeGenerator
-        };
-        backend = await factory.initializeNew(params);
+        backend = await fixture().initializeNew();
 
         assert.include(backend.sourceDir, 'test_project');
         assert.include(backend.binaryDir, 'build-new');
@@ -52,6 +52,21 @@ suite('Backend: Unconfigured project', async function () {
         assert.isOk(execTarget, 'MyExecutable target should be reported');
     });
 
+    test('Can specify environment and cache parameters', async function () {
+        backend = await fixture()
+            .env({ CMT_BACKEND_TEST_ENV_VAR: 'backend-test-env' })
+            .initializeNew();
+
+        const h = Fixture.createProgressHandler();
+
+        assert.isTrue(await backend.configure(['-DCMT_BACKEND_TEST_CONFIGURE_VAR=backend-test-1'], h));
+
+        sinon.assert.calledWithMatch(h.onMessage, 'CMT_BACKEND_TEST_CONFIGURE_VAR=backend-test-1');
+        sinon.assert.calledWithMatch(h.onMessage, 'CMT_BACKEND_TEST_ENV_VAR=backend-test-env');
+        sinon.assert.calledWithMatch(h.onProgress, 'Configuring', is0To1Ratio);
+        sinon.assert.calledWithMatch(h.onProgress, 'Generating', is0To1Ratio);
+    });
+
     teardown(async function () {
         if (backend) {
             await backend.dispose();
@@ -60,7 +75,7 @@ suite('Backend: Unconfigured project', async function () {
     });
 });
 
-suite.only('Backend tests', async function () {
+suite('Backend tests', async function () {
     this.timeout(60 * 1000);
 
     // Array of folders to clean up in tear down method.
@@ -69,11 +84,17 @@ suite.only('Backend tests', async function () {
     const factory = new ServerClientCMakeToolsFactory();
     const binaryDir: string = Fixture.resolvePath('test_project/build-backend');
 
+    const fixture = () => {
+        return new BackendFixture(factory)
+            .registerInto(disposables)
+            .binaryDir(binaryDir);
+    }
+
     suiteSetup(async function () {
         if (quickSetup && await exists(binaryDir))
             return;
 
-        const params: InitialConfigureParams = {
+        const params: BackendNewInitializationParams = {
             sourceDir: Fixture.resolvePath('test_project'),
             binaryDir: binaryDir,
             generator: cmakeGenerator
@@ -103,37 +124,54 @@ suite.only('Backend tests', async function () {
     });
 
     test('Can open existing folder', async function () {
-        const backend = await factory.initializeConfigured(binaryDir);
-        disposables.push(backend);
+        const backend = await fixture().initializeConfigured();
         assert.include(backend.sourceDir, 'test_project');
     });
 
     test('Can configure with default args', async function () {
-        const backend = await factory.initializeConfigured(binaryDir);
-        disposables.push(backend);
+        const backend = await fixture().initializeConfigured();
 
         assert.isTrue(await backend.configure());
 
         const execTarget = backend.targets.find(t => t.name === 'MyExecutable');
         assert.isOk(execTarget, 'MyExecutable target should be reported');
+        assert.propertyVal(execTarget, 'targetType', 'EXECUTABLE');
     });
 
-    test.only('Configure reports progress messages', async function () {
-        const backend = await factory.initializeConfigured(binaryDir);
-        disposables.push(backend);
+    test('Configure reports progress messages', async function () {
+        const backend = await fixture().initializeConfigured();
 
-        const progressHandler: ProgressHandler = {
-            onProgress: (message: string, progress: number) => { },
-            onMessage: (message: string, title?: string) => { }
-        };
-        const onProgress = sinon.spy(progressHandler, "onProgress");
-        const onMessage = sinon.spy(progressHandler, "onMessage");
+        const h = Fixture.createProgressHandler();
+        assert.isTrue(await backend.configure(undefined, h));
 
-        assert.isTrue(await backend.configure(undefined, progressHandler));
+        sinon.assert.calledWithMatch(h.onProgress, 'Configuring', is0To1Ratio);
+        sinon.assert.calledWithMatch(h.onProgress, 'Generating', is0To1Ratio);
+        sinon.assert.calledWithMatch(h.onMessage, 'Configuring done');
+    });
 
-        sinon.assert.calledWithMatch(onProgress, "Configuring", is0To1Ratio);
-        sinon.assert.calledWithMatch(onProgress, "Generating", is0To1Ratio);
-        sinon.assert.calledWithMatch(onMessage, "Configuring done");
+    test('Can specify configure variable', async function () {
+        const backend = await fixture().initializeConfigured();
+        const h = Fixture.createProgressHandler();
+
+        assert.isTrue(await backend.configure(['-DCMT_BACKEND_TEST_CONFIGURE_VAR=backend-test-1'], h));
+        sinon.assert.calledWithMatch(h.onMessage, 'CMT_BACKEND_TEST_CONFIGURE_VAR=backend-test-1');
+
+        h.onMessage.reset();
+
+        assert.isTrue(await backend.configure(['-DCMT_BACKEND_TEST_CONFIGURE_VAR=backed-test-2'], h));
+        sinon.assert.calledWithMatch(h.onMessage, 'CMT_BACKEND_TEST_CONFIGURE_VAR=backed-test-2');
+    });
+
+    test('Can specify environment variable', async function () {
+        assert.notProperty(process.env, 'CMT_BACKEND_TEST_ENV_VAR');
+
+        const backend = await fixture()
+            .env({ CMT_BACKEND_TEST_ENV_VAR: 'backend-test-env' })
+            .initializeConfigured();
+        const h = Fixture.createProgressHandler();
+
+        assert.isTrue(await backend.configure(undefined, h));
+        sinon.assert.calledWithMatch(h.onMessage, 'CMT_BACKEND_TEST_ENV_VAR=backend-test-env');
     });
 
 });

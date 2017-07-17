@@ -23,6 +23,11 @@ export class StartupError extends global.Error {
   }
 }
 
+/**
+ * Set this to true to see protocol exchange with CMake Server in the log.
+ */
+const logProtocolMessages = false;
+
 export interface ProtocolVersion {
   isExperimental: boolean;
   major: number;
@@ -432,7 +437,8 @@ export class CMakeServerClient {
           'Protocol error talking to CMake! Got this input: ' + input);
       }
       this._accInput = tail;
-      console.log(`Received message from cmake-server: ${content}`);
+      if (logProtocolMessages)
+        console.log(`Received message from cmake-server: ${content}`);
       const message: SomeMessage = JSON.parse(content);
       this._onMessage(message);
     }
@@ -528,7 +534,8 @@ export class CMakeServerClient {
     });
     const cp = { ...params, type, cookie };
     const msg = JSON.stringify(cp);
-    console.log(`Sending message to cmake-server: ${msg}`);
+    if (logProtocolMessages)
+      console.log(`Sending message to cmake-server: ${msg}`);
     this._pipe.write('\n[== "CMake Server" ==[\n');
     this._pipe.write(msg);
     this._pipe.write('\n]== "CMake Server" ==]\n');

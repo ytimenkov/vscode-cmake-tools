@@ -10,7 +10,7 @@ import * as util from './util';
 import { config } from './config';
 import * as cms from './server-client';
 import { log } from './logging';
-import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams, ProgressHandler } from './backend';
+import { CMakeToolsBackend, CMakeToolsBackendFactory, BackendNewInitializationParams, ProgressHandler, BackendConfiguredInitializationParams } from './backend';
 import { CancellationToken, DiagnosticCollection, Disposable, EventEmitter, languages } from 'vscode';
 import { CMake } from './cmake'
 
@@ -311,7 +311,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
 }
 
 export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
-  async initializeConfigured(binaryDir: string): Promise<CMakeToolsBackend> {
+  async initializeConfigured(params: BackendConfiguredInitializationParams): Promise<CMakeToolsBackend> {
     // Work-around: CMake Server checks that CMAKE_HOME_DIRECTORY
     // in the cmake cache is the same as what we provide when we
     // set up the connection. Because CMake may normalize the
@@ -325,7 +325,7 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
     // See
     // https://gitlab.kitware.com/cmake/cmake/issues/16948
     // https://gitlab.kitware.com/cmake/cmake/issues/16736
-    const cachePath = CMake.getCachePath(binaryDir);
+    const cachePath = CMake.getCachePath(params.binaryDir);
     const tmpcache = await cache.CMakeCache.fromPath(cachePath);
     const sourceDir = tmpcache.get('CMAKE_HOME_DIRECTORY');
     if (!sourceDir) {
@@ -333,13 +333,10 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
     }
 
     const client = await cms.CMakeServerClient.start({
-      binaryDir: util.normalizePath(binaryDir),
+      binaryDir: util.normalizePath(params.binaryDir),
       sourceDir: sourceDir.as<string>(),
       cmakePath: config.cmakePath,
-      environment: util.mergeEnvironment(
-        config.environment,
-        config.configureEnvironment/*,
-          this.currentEnvironmentVariables*/),
+      environment: params.environment || {},
       onDirty: async () => {
         // this._dirty = true;
       }
@@ -348,15 +345,12 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
     return this.createBackend(client);
   }
 
-  async initializeNew(params: InitialConfigureParams): Promise<CMakeToolsBackend> {
+  async initializeNew(params: BackendNewInitializationParams): Promise<CMakeToolsBackend> {
     const client = await cms.CMakeServerClient.start({
       binaryDir: util.normalizePath(params.binaryDir),
       sourceDir: params.sourceDir,
       cmakePath: config.cmakePath,
-      environment: util.mergeEnvironment(
-        config.environment,
-        config.configureEnvironment/*,
-          this.currentEnvironmentVariables*/),
+      environment:  params.environment || {},
       onDirty: async () => {
         // this._dirty = true;
       },

@@ -57,21 +57,27 @@ export interface CMakeToolsBackend extends Disposable {
 }
 
 /**
+ * Parameters used to initialize backend with build directory
+ * containing configured project.
+ */
+export interface BackendConfiguredInitializationParams {
+  binaryDir: string;
+  environment?: { [key: string]: string };
+}
+
+/**
  * Parameters used to initialize new build system.
  */
-export interface InitialConfigureParams {
+export interface BackendNewInitializationParams extends BackendConfiguredInitializationParams {
   sourceDir: string;
-  binaryDir: string;
   generator: CMakeGenerator;
-  // TODO: Variant stuff.
-  // TODO: extra cmake command-line parameters?
-  settings?: { [key: string]: (string | number | boolean | string[]) };
+  extraArgs?: string[];
 }
 
 /**
  * The interface for initializing backend promises.
  */
 export interface CMakeToolsBackendFactory {
-  initializeConfigured(binaryDir: string): Promise<CMakeToolsBackend>;
-  initializeNew(params: InitialConfigureParams): Promise<CMakeToolsBackend>;
+  initializeConfigured(params: BackendConfiguredInitializationParams): Promise<CMakeToolsBackend>;
+  initializeNew(params: BackendNewInitializationParams): Promise<CMakeToolsBackend>;
 }

@@ -8,7 +8,7 @@ import * as async from './async';
 import * as path from 'path';
 import { config } from './config';
 import { log } from './logging';
-import { CMakeToolsBackend, CMakeToolsBackendFactory, InitialConfigureParams } from './backend';
+import { CMakeToolsBackend, CMakeToolsBackendFactory, BackendNewInitializationParams, BackendConfiguredInitializationParams } from './backend';
 import { CMake } from './cmake';
 import { VariantManager } from "./variants";
 import { EnvironmentManager } from './environment';
@@ -565,7 +565,14 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       log.verbose('Starting CMake Tools backend');
       this.model.state = "Initializing";
 
-      const backend: CMakeToolsBackend = await this.backendFactory.initializeConfigured(binaryDir);
+      let params: BackendConfiguredInitializationParams = {
+        binaryDir,
+        environment: util.mergeEnvironment(
+          config.environment,
+          config.configureEnvironment)
+      };
+
+      const backend: CMakeToolsBackend = await this.backendFactory.initializeConfigured(params);
 
       // TODO: wither provide event, like onDidChangeBackend or a helper function to
       // update subscriptions.
@@ -604,11 +611,14 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
     const generator = await this.pickGenerator();
     log.verbose(`Configuring using CMake generator ${generator.name}`);
 
-    let params: InitialConfigureParams = {
+    let params: BackendNewInitializationParams = {
       sourceDir: util.normalizePath(util.replaceVars(config.sourceDirectory)),
       binaryDir: binaryDir,
       generator: generator,
-      settings: this.pickConfigureSettings(),
+      // settings: this.pickConfigureSettings(),
+      environment: util.mergeEnvironment(
+        config.environment,
+        config.configureEnvironment)
     };
     const backend = await this.backendFactory.initializeNew(params);
 

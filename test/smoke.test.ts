@@ -41,7 +41,7 @@ suite('Integration tests', async function () {
         //await assert.eventually.equal(cmt.model.)
         assert.include(await cmt.sourceDir, "test_project");
         assert.equal(await cmt.binaryDir, buildDir);
-        assert.include(await cmt.mainListFile, "test_project/CMakeLists.txt");
+        assert.include((await cmt.mainListFile).toLocaleLowerCase(), "test_project/cmakelists.txt");
     });
 
     teardown(async function () {
