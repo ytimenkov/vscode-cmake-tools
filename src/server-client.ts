@@ -74,14 +74,29 @@ export interface ReplyMessage extends CookiedMessage { inReplyTo: string; }
  * Progress messages are sent regarding some long-running request process before
  * the reply is ready.
  */
-export interface ProgressMessage extends ReplyMessage {
-  type: 'progress';
+export interface ProgressContent {
   progressMessage: string;
   progressMinimum: number;
   progressCurrent: number;
   progressMaximum: number;
 }
 
+interface ProgressMessage extends ProgressContent, ReplyMessage {
+  type: 'progress';
+}
+
+/**
+ * The `MessageMessage` is an un-solicited message from cmake with a string to
+ * display to the user.
+ */
+export interface MessageContent {
+  message: string;
+  title: string;
+}
+
+interface MessageMessage extends MessageContent, ReplyMessage {
+  type: 'message';
+}
 export interface SignalMessage extends MessageBase {
   type: 'signal';
   name: string;
@@ -96,17 +111,6 @@ export interface FileChangeMessage {
 }
 
 type SomeSignalMessage = (DirtyMessage | FileChangeMessage);
-
-/**
- * The `MessageMessage` is an un-solicited message from cmake with a string to
- * display to the user.
- */
-export interface MessageMessage extends MessageBase {
-  type: 'message';
-  message: string;
-  title: string;
-  inReplyTo: string;
-}
 
 /**
  * The hello message is sent immediately from cmake-server upon startup.
@@ -359,8 +363,6 @@ export type SomeMessage =
  */
 export interface ClientInit {
   cmakePath: string;
-  onMessage: (m: MessageMessage) => Promise<void>;
-  onProgress: (m: ProgressMessage) => Promise<void>;
   onDirty: () => Promise<void>;
   environment: { [key: string]: string };
   sourceDir: string;
@@ -395,10 +397,14 @@ export class ServerError extends global.Error implements ErrorMessage {
   }
 }
 
+export type ProgressHandler = (msg: ProgressContent) => void;
+export type MessageHandler = (msg: MessageContent) => void;
+
 interface MessageResolutionCallbacks {
   resolve: (a: SomeReplyMessage) => void;
   reject: (b: ServerError) => void;
-  progress?: (p: ProgressMessage) => void;
+  progress?: ProgressHandler;
+  message?: MessageHandler;
 }
 
 
@@ -439,12 +445,6 @@ export class CMakeServerClient {
       case 'hello': {
         this._params.onHello(some as HelloMessage).catch(e => {
           console.error('Unhandled error in onHello', e);
-        });
-        return;
-      }
-      case 'message': {
-        this._params.onMessage(some as MessageMessage).catch(e => {
-          console.error('Unhandled error in onMessage', e);
         });
         return;
       }
@@ -494,6 +494,17 @@ export class CMakeServerClient {
           }
           return;
         }
+        case 'message': {
+          if (handler.message) {
+            const msg = cookied as MessageMessage;
+            try {
+              handler.message(msg);
+            } catch (e) {
+              console.error('Unhandled error in onMessage', e);
+            }
+          }
+          return;
+        }
       }
     }
 
@@ -501,19 +512,19 @@ export class CMakeServerClient {
     console.warn(`Can't yet handle the ${some.type} messages`);
   }
 
-  sendRequest(t: 'handshake', p: HandshakeParams, progress?: (pm: ProgressMessage) => void): Promise<HandshakeContent>;
-  sendRequest(t: 'globalSettings', p?: GlobalSettingsParams, progress?: (pm: ProgressMessage) => void):
+  sendRequest(t: 'handshake', p: HandshakeParams, progress?: ProgressHandler, message?: MessageHandler): Promise<HandshakeContent>;
+  sendRequest(t: 'globalSettings', p?: GlobalSettingsParams, progress?: ProgressHandler, message?: MessageHandler):
     Promise<GlobalSettingsContent>;
-  sendRequest(t: 'setGlobalSettings', p: SetGlobalSettingsParams, progress?: (pm: ProgressMessage) => void):
+  sendRequest(t: 'setGlobalSettings', p: SetGlobalSettingsParams, progress?: ProgressHandler, message?: MessageHandler):
     Promise<SetGlobalSettingsContent>;
-  sendRequest(t: 'configure', p: ConfigureParams, progress?: (pm: ProgressMessage) => void): Promise<ConfigureContent>;
-  sendRequest(t: 'compute', p?: ComputeParams, progress?: (pm: ProgressMessage) => void): Promise<ComputeContent>;
-  sendRequest(t: 'codemodel', p?: CodeModelParams, progress?: (pm: ProgressMessage) => void): Promise<CodeModelContent>;
-  sendRequest(T: 'cache', p?: CacheParams, progress?: (pm: ProgressMessage) => void): Promise<CacheContent>;
-  sendRequest(type: string, params: any = {}, progress?: (pm: ProgressMessage) => void): Promise<any> {
+  sendRequest(t: 'configure', p: ConfigureParams, progress?: ProgressHandler, message?: MessageHandler): Promise<ConfigureContent>;
+  sendRequest(t: 'compute', p?: ComputeParams, progress?: ProgressHandler, message?: MessageHandler): Promise<ComputeContent>;
+  sendRequest(t: 'codemodel', p?: CodeModelParams, progress?: ProgressHandler, message?: MessageHandler): Promise<CodeModelContent>;
+  sendRequest(T: 'cache', p?: CacheParams, progress?: ProgressHandler, message?: MessageHandler): Promise<CacheContent>;
+  sendRequest(type: string, params: any = {}, progress?: ProgressHandler, message?: MessageHandler): Promise<any> {
     const cookie = Math.random().toString();
     const pr = new Promise((resolve, reject) => {
-      this._promisesResolvers.set(cookie, { resolve: resolve, reject: reject, progress });
+      this._promisesResolvers.set(cookie, { resolve: resolve, reject: reject, progress, message });
     });
     const cp = { ...params, type, cookie };
     const msg = JSON.stringify(cp);
@@ -536,12 +547,12 @@ export class CMakeServerClient {
     return this.sendRequest('globalSettings');
   }
 
-  configure(params: ConfigureParams, progress?: (pm: ProgressMessage) => void): Promise<ConfigureContent> {
-    return this.sendRequest('configure', params, progress);
+  configure(params: ConfigureParams, progress?: ProgressHandler, message?: MessageHandler): Promise<ConfigureContent> {
+    return this.sendRequest('configure', params, progress, message);
   }
 
-  compute(params?: ComputeParams, progress?: (pm: ProgressMessage) => void): Promise<ComputeParams> {
-    return this.sendRequest('compute', params, progress);
+  compute(params?: ComputeParams, progress?: ProgressHandler, message?: MessageHandler): Promise<ComputeParams> {
+    return this.sendRequest('compute', params, progress, message);
   }
 
   codemodel(params?: CodeModelParams): Promise<CodeModelContent> {
@@ -616,10 +627,8 @@ export class CMakeServerClient {
         tmpdir,
         sourceDir: params.sourceDir,
         binaryDir: params.binaryDir,
-        onMessage: params.onMessage,
         cmakePath: params.cmakePath,
         environment: params.environment,
-        onProgress: params.onProgress,
         onDirty: params.onDirty,
         generator: params.generator,
         onCrash: async (retc) => {

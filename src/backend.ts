@@ -1,7 +1,22 @@
 import { Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings, CMakeGenerator } from './api';
 import { CancellationToken, Disposable, DiagnosticCollection, Event } from "vscode";
 
-export type ProgressHandler = (number) => void;
+/**
+ * Progress handler for long-running operations.
+ */
+export interface ProgressHandler {
+  /**
+   * Called when operation progress is updated.
+   * @param message is the operation name.
+   * @param progress the operation progress in range [0, 1].
+   */
+  onProgress: (message: string, progress: number) => void;
+
+  /**
+   * Called when operation emits diagnostic message.
+   */
+  onMessage: (message: string, title?: string) => void;
+}
 
 /**
  * The backend API provides metadata for currently selected binary directory.

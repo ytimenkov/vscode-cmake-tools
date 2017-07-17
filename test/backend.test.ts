@@ -2,11 +2,13 @@ import { assert, use } from "chai";
 import { rmdir } from "../src/util";
 import { Fixture } from "./fixture";
 import { ServerClientCMakeToolsFactory } from "../src/client";
-import { InitialConfigureParams, CMakeToolsBackend } from "../src/backend";
+import { InitialConfigureParams, CMakeToolsBackend, ProgressHandler } from "../src/backend";
 import { Disposable } from "vscode";
 import { CMakeGenerator } from "../src/api";
 import { exists } from "../src/async";
 import * as sinon from "Sinon";
+
+sinon.assert.expose(assert, { prefix: "" });
 
 /**
  * Generator which will be used in test.
@@ -21,6 +23,8 @@ const cmakeGenerator: CMakeGenerator = {
  * (Useful for debuggign tests).
  */
 const quickSetup: boolean = true;
+
+const is0To1Ratio = sinon.match((n) => (0 <= n && n <= 1), "Number between 0 and 1");
 
 suite('Backend: Unconfigured project', async function () {
     this.timeout(60 * 1000);
@@ -114,16 +118,22 @@ suite.only('Backend tests', async function () {
         assert.isOk(execTarget, 'MyExecutable target should be reported');
     });
 
-    test.only('Configure reports progress', async function () {
+    test.only('Configure reports progress messages', async function () {
         const backend = await factory.initializeConfigured(binaryDir);
         disposables.push(backend);
 
-        let progressCb = sinon.spy();
+        const progressHandler: ProgressHandler = {
+            onProgress: (message: string, progress: number) => { },
+            onMessage: (message: string, title?: string) => { }
+        };
+        const onProgress = sinon.spy(progressHandler, "onProgress");
+        const onMessage = sinon.spy(progressHandler, "onMessage");
 
-        assert.isTrue(await backend.configure(undefined, progressCb));
+        assert.isTrue(await backend.configure(undefined, progressHandler));
 
-        sinon.assert.calledWithMatch(progressCb, (p) => (p >= 0 && p <= 100));
+        sinon.assert.calledWithMatch(onProgress, "Configuring", is0To1Ratio);
+        sinon.assert.calledWithMatch(onProgress, "Generating", is0To1Ratio);
+        sinon.assert.calledWithMatch(onMessage, "Configuring done");
     });
-
 
 });

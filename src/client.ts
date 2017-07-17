@@ -214,16 +214,19 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
       }
       parser.fillDiagnosticCollection(this.diagnostics);
     };
-    let progress: ((pm: cms.ProgressMessage) => void) | undefined = undefined;
+    let progress: cms.ProgressHandler | undefined = undefined;
+    let message: cms.MessageHandler | undefined = undefined;
     if (progressHandler) {
-      progress = (pm: cms.ProgressMessage) => progressHandler((pm.progressCurrent - pm.progressMinimum) / (pm.progressMaximum - pm.progressMinimum));
+      progress = (pm: cms.ProgressContent) => progressHandler.onProgress(pm.progressMessage,
+        (pm.progressCurrent - pm.progressMinimum) / (pm.progressMaximum - pm.progressMinimum));
+      message = (mc: cms.MessageContent) => progressHandler.onMessage(mc.message, mc.title);
     }
 
     try {
       this._accumulatedMessages = [];
       const args = extraArgs || [];
-      await this.client.configure({ cacheArguments: args }, progress);
-      await this.client.compute(progress);
+      await this.client.configure({ cacheArguments: args }, progress, message);
+      await this.client.compute({}, progress, message);
       parseMessages();
     } catch (e) {
       if (e instanceof cms.ServerError) {
@@ -339,16 +342,6 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
           this.currentEnvironmentVariables*/),
       onDirty: async () => {
         // this._dirty = true;
-      },
-      onMessage: async (msg) => {
-        // const line = `-- ${msg.message}`;
-        // this._accumulatedMessages.push(line);
-        // this._channel.appendLine(line);
-      },
-      onProgress: async (prog) => {
-        // this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
-        //   (prog.progressMaximum - prog.progressMinimum);
-        // this.statusMessage = prog.progressMessage;
       }
     });
 
@@ -366,16 +359,6 @@ export class ServerClientCMakeToolsFactory implements CMakeToolsBackendFactory {
           this.currentEnvironmentVariables*/),
       onDirty: async () => {
         // this._dirty = true;
-      },
-      onMessage: async (msg) => {
-        // const line = `-- ${msg.message}`;
-        // this._accumulatedMessages.push(line);
-        // this._channel.appendLine(line);
-      },
-      onProgress: async (prog) => {
-        // this.buildProgress = (prog.progressCurrent - prog.progressMinimum) /
-        //   (prog.progressMaximum - prog.progressMinimum);
-        // this.statusMessage = prog.progressMessage;
       },
       generator: params.generator,
     });
