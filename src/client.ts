@@ -17,7 +17,6 @@ import { CMake } from './cmake'
 export class ServerClientCMakeTools implements CMakeToolsBackend {
   subscriptions: Disposable[] = [];
   readonly noExecutablesMessage: string = 'No targets are available for debugging.';
-  // TODO: Initialize these.
   sourceDir: string;
   binaryDir: string;
   diagnostics: DiagnosticCollection = languages.createDiagnosticCollection('cmake-build-diags');;
@@ -130,10 +129,9 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     return this._cacheEntries.get(key) || null;
   }
 
-  async compilationInfoForFile(filepath: string):
-    Promise<api.CompilationInfo | null> {
+  async compilationInfoForFile(filepath: string): Promise<api.CompilationInfo> {
     if (!this.codeModel) {
-      return null;
+      throw new Error('Project is not configured');
     }
     const config = this.codeModel.configurations[0];
     // const config = this.codeModel.configurations.length === 1 ?
@@ -141,7 +139,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     // this.codeModel.configurations.find(
     //   c => c.name === this.selectedBuildType);
     if (!config) {
-      return null;
+      throw new Error('Configuration is not found');
     }
     for (const project of config.projects) {
       for (const target of project.targets) {
@@ -175,10 +173,10 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
         }
       }
     }
-    return null;
+    throw new Error('Unknown file');
   }
 
-  async configure(extraArgs?: string[], progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean> {
+  async configure(extraArgs?: string[], progressHandler?: ProgressHandler): Promise<boolean> {
     // TODO: Preconfigure did this:
     // 1. Check that some operation is already running.
     // 2. Check that folder is initialized and offered to QuickStart

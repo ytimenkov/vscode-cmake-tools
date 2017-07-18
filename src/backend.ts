@@ -41,13 +41,13 @@ export interface CMakeToolsBackend extends Disposable {
    */
   subscriptions: Disposable[];
 
-  compilationInfoForFile(filepath: string): Promise<CompilationInfo | null>;
+  compilationInfoForFile(filepath: string): Promise<CompilationInfo>;
 
   /**
    * Executes configure and generate operations on currently initialized binary
    * directory.
    */
-  configure(extraArgs?: string[], progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean>;
+  configure(extraArgs?: string[], progressHandler?: ProgressHandler): Promise<boolean>;
 
   /**
    * Builds specified target in the current build directory.

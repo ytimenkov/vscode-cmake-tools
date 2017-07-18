@@ -32,6 +32,10 @@ if(CAUSE_BUILD_ERROR)
     target_compile_definitions(MyExecutable PRIVATE CMT_DO_BUILD_ERROR)
 endif()
 
+if ($ENV{CAUSE_CONFIG_ERROR})
+    message(FATAL_ERROR "Injected failure")
+endif()
+
 if(MSVC)
     target_compile_definitions(MyExecutable PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
