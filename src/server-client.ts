@@ -444,8 +444,6 @@ export class CMakeServerClient {
     }
   }
 
-  private _dispatchProgress(m: ProgressMessage) { }
-
   private _onMessage(some: SomeMessage): void {
     switch (some.type) {
       case 'hello': {
@@ -530,7 +528,7 @@ export class CMakeServerClient {
   sendRequest(type: string, params: any = {}, progress?: ProgressHandler, message?: MessageHandler): Promise<any> {
     const cookie = Math.random().toString();
     const pr = new Promise((resolve, reject) => {
-      this._promisesResolvers.set(cookie, { resolve: resolve, reject: reject, progress, message });
+      this._promisesResolvers.set(cookie, { resolve, reject, progress, message });
     });
     const cp = { ...params, type, cookie };
     const msg = JSON.stringify(cp);

@@ -10,28 +10,29 @@ import { config } from './config';
 import { CodeModelContent } from './server-client';
 import { VariantCombination } from './variants';
 import { log } from './logging';
+import { ProgressHandler } from "./backend";
 
 /**
  * An interface providing registry of reusable VS Code output windows
  * so they could be reused from different parts of the extension.
  */
 export class OutputChannelManager implements vscode.Disposable {
-    private _channels: vscode.OutputChannel[] = [];
+  private _channels: vscode.OutputChannel[] = [];
 
-    get(name: string): vscode.OutputChannel {
-        let channel = this._channels.find((c) => c.name === name);
-        if (!channel) {
-            channel = vscode.window.createOutputChannel(name);
-            this._channels.push(channel);
-        }
-        return channel;
+  get(name: string): vscode.OutputChannel {
+    let channel = this._channels.find((c) => c.name === name);
+    if (!channel) {
+      channel = vscode.window.createOutputChannel(name);
+      this._channels.push(channel);
     }
+    return channel;
+  }
 
-    dispose() {
-        for (const channel of this._channels) {
-            channel.dispose();
-        }
+  dispose() {
+    for (const channel of this._channels) {
+      channel.dispose();
     }
+  }
 }
 export const outputChannels = new OutputChannelManager();
 
@@ -86,12 +87,12 @@ export class ThrottledOutputChannel implements vscode.OutputChannel {
 }
 
 
-export function isTruthy(value: (boolean|string|null|undefined|number)) {
+export function isTruthy(value: (boolean | string | null | undefined | number)) {
   if (typeof value === 'string') {
     return !(
-        ['', 'FALSE', 'OFF', '0', 'NOTFOUND', 'NO', 'N', 'IGNORE'].indexOf(
-            value) >= 0 ||
-        value.endsWith('-NOTFOUND'));
+      ['', 'FALSE', 'OFF', '0', 'NOTFOUND', 'NO', 'N', 'IGNORE'].indexOf(
+        value) >= 0 ||
+      value.endsWith('-NOTFOUND'));
   }
   return !!value;
 }
@@ -115,17 +116,17 @@ export function product<T>(arrays: T[][]): T[][] {
     acc
       // Append each element of the current array to each list already accumulated
       .map(
-        prev => curr.map(
-          item => prev.concat(item)
-        )
+      prev => curr.map(
+        item => prev.concat(item)
+      )
       )
       .reduce(
-        // Join all the lists
-        (a, b) => a.concat(b),
-        []
+      // Join all the lists
+      (a, b) => a.concat(b),
+      []
       ),
-      [[]] as T[][]
-    );
+    [[]] as T[][]
+  );
   // clang-format on
 }
 
@@ -189,22 +190,24 @@ export async function ensureDirectory(dirpath: string): Promise<void> {
   } else {
     if (!(await async.isDirectory(dirpath))) {
       throw new Error(`Failed to create directory: "${dirpath
-                      }" is an existing file and is not a directory`);
+        }" is an existing file and is not a directory`);
     }
   }
 }
 
 export async function writeFile(
-    filepath: string, content: string): Promise<void> {
+  filepath: string, content: string): Promise<void> {
   await ensureDirectory(path.dirname(filepath));
   return new Promise<void>(
-      (resolve, reject) => {fs.writeFile(filepath, content, (err) => {
+    (resolve, reject) => {
+      fs.writeFile(filepath, content, (err) => {
         if (err) {
           reject(err);
         } else {
           resolve();
         }
-      })})
+      })
+    })
 }
 
 
@@ -227,8 +230,8 @@ export function parseVersion(str: string): Version {
   };
 }
 
-export function versionGreater(lhs: Version, rhs: Version|string): boolean {
-  if (typeof(rhs) === 'string') {
+export function versionGreater(lhs: Version, rhs: Version | string): boolean {
+  if (typeof (rhs) === 'string') {
     return versionGreater(lhs, parseVersion(rhs));
   }
   if (lhs.major > rhs.major) {
@@ -245,15 +248,15 @@ export function versionGreater(lhs: Version, rhs: Version|string): boolean {
   return false;
 }
 
-export function versionEquals(lhs: Version, rhs: Version|string): boolean {
-  if (typeof(rhs) === 'string') {
+export function versionEquals(lhs: Version, rhs: Version | string): boolean {
+  if (typeof (rhs) === 'string') {
     return versionEquals(lhs, parseVersion(rhs));
   }
   return lhs.major === rhs.major && lhs.minor === rhs.minor &&
-      lhs.patch === rhs.patch;
+    lhs.patch === rhs.patch;
 }
 
-export function versionLess(lhs: Version, rhs: Version|string): boolean {
+export function versionLess(lhs: Version, rhs: Version | string): boolean {
   return !versionGreater(lhs, rhs) && !versionEquals(lhs, rhs);
 }
 
@@ -271,17 +274,17 @@ export interface ExecutionInformation {
   process: proc.ChildProcess;
 }
 
-export function mergeEnvironment(...env: {[key: string]: string}[]) {
+export function mergeEnvironment(...env: { [key: string]: string }[]) {
   return env.reduce((acc, vars) => {
     if (process.platform === 'win32') {
       // Env vars on windows are case insensitive, so we take the ones from
       // active env and overwrite the ones in our current process env
       const norm_vars = Object.getOwnPropertyNames(vars).reduce<Object>(
-          (acc2, key: string) => {
-            acc2[key.toUpperCase()] = vars[key];
-            return acc2;
-          },
-          {});
+        (acc2, key: string) => {
+          acc2[key.toUpperCase()] = vars[key];
+          return acc2;
+        },
+        {});
       return Object.assign({}, acc, norm_vars);
     } else {
       return Object.assign({}, acc, vars);
@@ -290,22 +293,22 @@ export function mergeEnvironment(...env: {[key: string]: string}[]) {
 }
 
 export function execute(
-    program: string, args: string[], env: {[key: string]: string} = {},
-    workingDirectory?: string,
-    outputChannel: vscode.OutputChannel|null = null): ExecutionInformation {
-  const acc = {stdout: '', stderr: ''};
+  program: string, args: string[], env: { [key: string]: string } = {},
+  workingDirectory?: string,
+  outputChannel: vscode.OutputChannel | null = null): ExecutionInformation {
+  const acc = { stdout: '', stderr: '' };
   if (outputChannel) {
     outputChannel.appendLine(
-        '[vscode] Executing command: '
-        // We do simple quoting of arguments with spaces.
-        // This is only shown to the user,
-        // and doesn't have to be 100% correct.
-        +
-        [program]
-            .concat(args)
-            .map(a => a.replace('"', '\"'))
-            .map(a => /[ \n\r\f;\t]/.test(a) ? `"${a}"` : a)
-            .join(' '));
+      '[vscode] Executing command: '
+      // We do simple quoting of arguments with spaces.
+      // This is only shown to the user,
+      // and doesn't have to be 100% correct.
+      +
+      [program]
+        .concat(args)
+        .map(a => a.replace('"', '\"'))
+        .map(a => /[ \n\r\f;\t]/.test(a) ? `"${a}"` : a)
+        .join(' '));
   }
   const final_env = mergeEnvironment(process.env, env);
   const pipe = proc.spawn(program, args, {
@@ -313,8 +316,8 @@ export function execute(
     cwd: workingDirectory,
   });
   for (const [acckey, stream] of [
-           ['stdout', pipe.stdout],
-           ['stderr', pipe.stderr]] as [string, NodeJS.ReadableStream][]) {
+    ['stdout', pipe.stdout],
+    ['stderr', pipe.stderr]] as [string, NodeJS.ReadableStream][]) {
     let backlog = '';
     stream.on('data', (data: Uint8Array) => {
       backlog += data.toString();
@@ -352,7 +355,7 @@ export function execute(
       else {
         log.verbose(msg);
       }
-      resolve({retc, stdout: acc.stdout, stderr: acc.stderr});
+      resolve({ retc, stdout: acc.stdout, stderr: acc.stderr });
     })
   });
 
@@ -360,6 +363,50 @@ export function execute(
     process: pipe,
     onComplete: pr,
   };
+}
+
+export function execute2(command: string, args: string[], options?: proc.SpawnOptions,
+  token?: vscode.CancellationToken): { child: proc.ChildProcess, onComplete: Promise<number> } {
+
+  options = options || {};
+  options.env = mergeEnvironment(process.env, options.env);
+  const child = proc.spawn(command, args, options);
+  if (token) {
+    // NOTE: Is it necessary to handle returned Disposable and await for termProc?
+    token.onCancellationRequested(() => termProc(child));
+  }
+
+  for (const stream of [child.stdout, child.stderr]) {
+    let backlog = '';
+    stream.on('data', (chunk: Buffer | string) => {
+      backlog += chunk.toString();
+      let n = backlog.indexOf('\n');
+      // got a \n? emit one or more 'line' events
+      while (n >= 0) {
+        stream.emit('line', backlog.substring(0, n).replace(/\r+$/, ''));
+        backlog = backlog.substring(n + 1);
+        n = backlog.indexOf('\n');
+      }
+    });
+    stream.on('end', () => {
+      if (backlog) {
+        stream.emit('line', backlog.replace(/\r+$/, ''));
+      }
+    });
+  }
+  const onComplete = new Promise<number>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code: number, signal: string) => {
+      resolve(code);
+    })
+  });
+  return { child, onComplete };
+  // child.stdout.on('line', (line: string) => {
+  //   progressHandler.onMessage(line);
+  // });
+  // child.stderr.on('line', (line: string) => {
+  //   progressHandler.onMessage(line, 'Error');
+  // });
 }
 
 export async function termProc(child: proc.ChildProcess) {
@@ -375,7 +422,7 @@ async function _killTree(pid: number) {
   if (process.platform !== 'win32') {
     let children: number[] = [];
     const stdout =
-        (await async.execute('pgrep', ['-P', pid.toString()])).stdout.trim();
+      (await async.execute('pgrep', ['-P', pid.toString()])).stdout.trim();
     if (!!stdout.length) {
       children = stdout.split('\n').map(line => Number.parseInt(line));
     }
@@ -392,87 +439,87 @@ async function _killTree(pid: number) {
 }
 
 export function splitCommandLine(cmd: string):
-    string[] {
-      const cmd_re = /('(\\'|[^'])*'|"(\\"|[^"])*"|(\\ |[^ ])+|[\w-]+)/g;
-      const quoted_args = cmd.match(cmd_re);
-      console.assert(quoted_args);
-      // Our regex will parse escaped quotes, but they remain. We must
-      // remove them ourselves
-      return quoted_args!.map(
-          arg => arg.replace(/\\(")/g, '$1').replace(/^"(.*)"$/g, '$1'));
+  string[] {
+  const cmd_re = /('(\\'|[^'])*'|"(\\"|[^"])*"|(\\ |[^ ])+|[\w-]+)/g;
+  const quoted_args = cmd.match(cmd_re);
+  console.assert(quoted_args);
+  // Our regex will parse escaped quotes, but they remain. We must
+  // remove them ourselves
+  return quoted_args!.map(
+    arg => arg.replace(/\\(")/g, '$1').replace(/^"(.*)"$/g, '$1'));
 
-    }
+}
 
 export function parseRawCompilationInfo(raw: api.RawCompilationInfo):
-    api.CompilationInfo {
-      // Here we try to get more interesting information about a compilation
-      // than the raw command line.
-      // First we should start by splitting the command up into the individual
-      // arguments.
-      const command = splitCommandLine(raw.command);
-      const compiler = command[0];
-      const flags: string[] = [];
-      const inc_dirs = [] as ({
-        path: string;
-        isSystem: boolean
-      }[]);
-      const definitions = {} as {[key: string]: string | null};
+  api.CompilationInfo {
+  // Here we try to get more interesting information about a compilation
+  // than the raw command line.
+  // First we should start by splitting the command up into the individual
+  // arguments.
+  const command = splitCommandLine(raw.command);
+  const compiler = command[0];
+  const flags: string[] = [];
+  const inc_dirs = [] as ({
+    path: string;
+    isSystem: boolean
+  }[]);
+  const definitions = {} as { [key: string]: string | null };
 
-      const include_flags =
-          [{flag: '-I', isSystem: false}, {flag: '-isystem', isSystem: true}];
-      const def_flags = ['-D'];
-      if (compiler.endsWith('cl.exe')) {
-        include_flags.push({flag: '/I', isSystem: false});
-        def_flags.push('/D');
+  const include_flags =
+    [{ flag: '-I', isSystem: false }, { flag: '-isystem', isSystem: true }];
+  const def_flags = ['-D'];
+  if (compiler.endsWith('cl.exe')) {
+    include_flags.push({ flag: '/I', isSystem: false });
+    def_flags.push('/D');
+  }
+
+  // We are parsing an MSVC-style command line.
+  // It has options which may appear with a different argument prefix.
+  const non_include_args: string[] = [];
+  let arg = (n) => command[n];
+  next_arg: for (let i = 1; i < command.length; ++i) {
+    for (const iflag of include_flags) {
+      const flagstr = iflag.flag;
+      if (arg(i).startsWith(flagstr)) {
+        const ipath =
+          arg(i) === flagstr ? arg(++i) : arg(i).substr(flagstr.length);
+        const abs_ipath = path.isAbsolute(ipath) ?
+          ipath :
+          path.join(raw.directory, ipath);
+        inc_dirs.push({
+          path: normalizePath(abs_ipath),
+          isSystem: iflag.isSystem,
+        });
+        continue next_arg;
       }
-
-      // We are parsing an MSVC-style command line.
-      // It has options which may appear with a different argument prefix.
-      const non_include_args: string[] = [];
-      let arg = (n) => command[n];
-      next_arg: for (let i = 1; i < command.length; ++i) {
-        for (const iflag of include_flags) {
-          const flagstr = iflag.flag;
-          if (arg(i).startsWith(flagstr)) {
-            const ipath =
-                arg(i) === flagstr ? arg(++i) : arg(i).substr(flagstr.length);
-            const abs_ipath = path.isAbsolute(ipath) ?
-                ipath :
-                path.join(raw.directory, ipath);
-            inc_dirs.push({
-              path: normalizePath(abs_ipath),
-              isSystem: iflag.isSystem,
-            });
-            continue next_arg;
-          }
-        }
-        non_include_args.push(arg(i));
-      }
-
-      const unparsed_args: string[] = [];
-      arg = (n) => non_include_args[n];
-      next_arg2: for (let i = 0; i < non_include_args.length; ++i) {
-        for (const dflag of def_flags) {
-          if (arg(i).startsWith(dflag)) {
-            const defstr =
-                arg(i) === dflag ? arg(++i) : arg(i).substr(dflag.length);
-            const def = parseCompileDefinition(defstr);
-            definitions[def[0]] = def[1];
-            continue next_arg2;
-          }
-        }
-        unparsed_args.push(arg(i));
-      }
-
-      return {
-        compiler,
-        compile: raw,
-        compileDefinitions: definitions,
-        file: raw.file,
-        includeDirectories: inc_dirs,
-        compileFlags: unparsed_args,
-      };
     }
+    non_include_args.push(arg(i));
+  }
+
+  const unparsed_args: string[] = [];
+  arg = (n) => non_include_args[n];
+  next_arg2: for (let i = 0; i < non_include_args.length; ++i) {
+    for (const dflag of def_flags) {
+      if (arg(i).startsWith(dflag)) {
+        const defstr =
+          arg(i) === dflag ? arg(++i) : arg(i).substr(dflag.length);
+        const def = parseCompileDefinition(defstr);
+        definitions[def[0]] = def[1];
+        continue next_arg2;
+      }
+    }
+    unparsed_args.push(arg(i));
+  }
+
+  return {
+    compiler,
+    compile: raw,
+    compileDefinitions: definitions,
+    file: raw.file,
+    includeDirectories: inc_dirs,
+    compileFlags: unparsed_args,
+  };
+}
 
 export function parseCompileDefinition(str: string): [string, string | null] {
   if (/^\w+$/.test(str)) {
@@ -484,7 +531,7 @@ export function parseCompileDefinition(str: string): [string, string | null] {
 }
 
 export function pause(time: number): Promise<void> {
-    return new Promise<void>(resolve => setTimeout(resolve, time));
+  return new Promise<void>(resolve => setTimeout(resolve, time));
 }
 
 /**
@@ -502,5 +549,5 @@ export function replaceVars(str: string): string {
     ['${toolset}', config.toolset]
   ] as [string, string][];
   return replacements.reduce(
-      (accdir, [needle, what]) => replaceAll(accdir, needle, what), str);
+    (accdir, [needle, what]) => replaceAll(accdir, needle, what), str);
 }

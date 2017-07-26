@@ -170,7 +170,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
    * diagnostics: Promise<DiagnosticCollection[]>
    */
   private async _diagnostics(): Promise<vscode.DiagnosticCollection> {
-    return (await this.backend).diagnostics;
+    return vscode.languages.createDiagnosticCollection('cmake-build-diags');
+//    return (await this.backend).diagnostics;
   }
   get diagnostics(): Promise<vscode.DiagnosticCollection> {
     return this._diagnostics();
@@ -222,7 +223,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   async build(target?: string): Promise<number> {
     // TODO: Progress and cancellation.
     const backend = await this.backend;
-    const result = await backend.build(target);
+    const result = 0; // await backend.build(target);
     return result ? 0 : 1;
   }
 
@@ -271,7 +272,7 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
   async cleanRebuild(): Promise<number> {
     // TODO: Test that short-circuit works. Or at least in normal way.
     const backend = await this.backend;
-    const result = await backend.build("clean") && await backend.build();
+    const result = 0; // await backend.build("clean") && await backend.build();
     return result ? 0 : 1;
   }
 
@@ -416,8 +417,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       return;
     }
     if (config.buildBeforeRun) {
-      if (!await backend.build(target.name))
-        return;
+      // if (!await backend.build(target.name))
+      //   return;
     }
   }
 
@@ -429,8 +430,8 @@ export class CMakeToolsWrapper implements api.CMakeToolsAPI, vscode.Disposable {
       return;
 
     if (config.buildBeforeRun) {
-      if (!await backend.build(target.name))
-        return;
+      // if (!await backend.build(target.name))
+      //   return;
     }
 
     const term = vscode.window.createTerminal(target.name, target.path);

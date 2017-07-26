@@ -82,11 +82,17 @@ export function stat(path: string): Promise<fs.Stats> {
 }
 
 export interface IExecutionResult {
-    retc: Number;
+    retc: number;
     stdout: string;
     stderr: string;
 }
 
+/**
+ * Executes specified command and returns accumulated stdout and stderr.
+ * @param command Command to run
+ * @param args Arguments to pass to the command
+ * @param options Extra options
+ */
 export function execute(command: string, args: string[], options?: proc.SpawnOptions): Promise<IExecutionResult> {
     return new Promise<IExecutionResult>((resolve, reject) => {
         const child = proc.spawn(command, args, options);

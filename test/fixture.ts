@@ -1,11 +1,28 @@
-
 import { normalize, join } from "path";
 import { Disposable } from "vscode";
 import { CMakeToolsBackendFactory, CMakeToolsBackend, BackendConfiguredInitializationParams, ProgressHandler, BackendNewInitializationParams } from "../src/backend";
 import { spy } from "sinon";
 import { CMakeGenerator } from "../src/api";
+import { ServerClientCMakeToolsFactory } from "../src/client";
+import * as sinon from "Sinon";
+import * as chai from "chai";
 
 const here = __dirname;
+
+// Augmentation of chai.assert module with sinon for convenience.
+declare global {
+    namespace Chai {
+        interface Assert {
+            calledWithMatch(spy: sinon.SinonSpy, ...args: any[]): void;
+            called(spy: sinon.SinonSpy): void;
+        }
+    }
+}
+
+sinon.assert.expose(chai.assert, { prefix: "" });
+
+export { assert } from "chai";
+export { spy } from "sinon";
 
 /**
  * A helper interface to create progress handler spies.
@@ -14,6 +31,8 @@ export interface ProgressHandlerSpy extends ProgressHandler {
     onProgress: sinon.SinonSpy & ((message: string, progress: number) => void);
     onMessage: sinon.SinonSpy & ((message: string, title?: string) => void);
 }
+
+export const is0To1Ratio = sinon.match((n) => (0 <= n && n <= 1), 'Number between 0 and 1');
 
 export class Fixture {
     static resolvePath(filename: string): string {
@@ -42,7 +61,7 @@ export class BackendFixture {
     private _generator?: CMakeGenerator;
     private _env?: { [key: string]: string };
 
-    constructor(private factory: CMakeToolsBackendFactory) {
+    constructor(private factory: CMakeToolsBackendFactory = new ServerClientCMakeToolsFactory()) {
     }
 
     registerInto(disposables: Disposable[]): BackendFixture {
@@ -86,7 +105,7 @@ export class BackendFixture {
         let params: BackendNewInitializationParams = {
             binaryDir: this._binaryDir || Fixture.resolvePath('test_project/build'),
             sourceDir: this._sourceDir || Fixture.resolvePath('test_project'),
-            generator: this._generator || { name: 'Ninja' },
+            generator: this._generator || TestEnv.cmakeGenerator,
             environment: this._env,
         };
         const backend = await this.factory.initializeNew(params);
@@ -95,4 +114,24 @@ export class BackendFixture {
         }
         return backend;
     }
+}
+
+/**
+ * System where tests run.
+ */
+export class TestEnv {
+
+    /**
+     * Generator which will be used in test.
+     * Please adapt to the one available on your system when running test.
+     */
+    static readonly cmakeGenerator: CMakeGenerator = {
+        name: 'Ninja'
+    }
+
+    /**
+     * Set to true to reuse existing build directory in backend tests.
+     * (Useful for debugging tests).
+     */
+    static readonly quickSetup: boolean = true;
 }

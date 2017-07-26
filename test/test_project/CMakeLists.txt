@@ -3,6 +3,9 @@ project(TestProject)
 
 include(CMakeToolsHelpers OPTIONAL)
 
+configure_file(timestamp.h.in timestamp.h @ONLY)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(MyExecutable main.cpp another.cpp)
 
 include(CTest)

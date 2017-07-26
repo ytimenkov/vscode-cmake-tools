@@ -13,6 +13,8 @@
 #include <cassert>
 #include <fstream>
 
+#include "timestamp.h"
+
 typedef std::vector<std::string>::const_iterator iter;
 
 extern int get_num();

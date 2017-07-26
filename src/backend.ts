@@ -1,5 +1,5 @@
 import { Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings, CMakeGenerator } from './api';
-import { CancellationToken, Disposable, DiagnosticCollection, Event } from "vscode";
+import { Disposable, Event } from "vscode";
 
 /**
  * Progress handler for long-running operations.
@@ -24,14 +24,11 @@ export interface ProgressHandler {
 export interface CMakeToolsBackend extends Disposable {
   readonly sourceDir: string;
   readonly binaryDir: string;
-
-  readonly diagnostics: DiagnosticCollection;
+  readonly generator: CMakeGenerator;
 
   readonly targets: Target[];
 
   readonly reconfigured: Event<void>;
-
-  readonly generator: CMakeGenerator;
 
   readonly noExecutablesMessage: string;
 
@@ -41,6 +38,9 @@ export interface CMakeToolsBackend extends Disposable {
    */
   subscriptions: Disposable[];
 
+  /**
+   * Queries underlying CMake system for defines and includes.
+   */
   compilationInfoForFile(filepath: string): Promise<CompilationInfo>;
 
   /**
@@ -48,12 +48,6 @@ export interface CMakeToolsBackend extends Disposable {
    * directory.
    */
   configure(extraArgs?: string[], progressHandler?: ProgressHandler): Promise<boolean>;
-
-  /**
-   * Builds specified target in the current build directory.
-   * @param configuration is required for multi-configuration generators.
-   */
-  build(target?: string, configuration?: string, progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean>;
 }
 
 /**

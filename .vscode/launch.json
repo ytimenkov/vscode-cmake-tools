@@ -15,7 +15,7 @@
                 "${workspaceRoot}/out/src/*",
                 "${workspaceRoot}/out/test/*"
             ],
-            "preLaunchTask": "npm: run compile",
+            // "preLaunchTask": "npm: run compile",
             "smartStep": true
         },
         {
@@ -31,7 +31,7 @@
                 "${workspaceRoot}/out/src/*",
                 "${workspaceRoot}/out/test/*"
             ],
-            "preLaunchTask": "npm: run compile",
+            // "preLaunchTask": "tsc: build tsconfig.json",
             "smartStep": true
         }
     ]
