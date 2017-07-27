@@ -31,13 +31,37 @@ message(STATUS "CMT_BACKEND_TEST_CONFIGURE_VAR=${CMT_BACKEND_TEST_CONFIGURE_VAR}
 
 add_test(AnExampleTest MyExecutable)
 
-if(CAUSE_BUILD_ERROR)
+if($ENV{CAUSE_BUILD_ERROR})
     target_compile_definitions(MyExecutable PRIVATE CMT_DO_BUILD_ERROR)
 endif()
 
 if ($ENV{CAUSE_CONFIG_ERROR})
     message(FATAL_ERROR "Injected failure")
 endif()
+
+if($ENV{CAUSE_BUILD_HANG})
+    # Notify test that it is a good time to cancel the build.
+    # Write start marker as a separate target because some generators
+    # like Ninja may buffer whole output for single target.
+    #
+    # NOTE: It is good idea to have sleep longer than timeout in the test.
+    add_custom_target(TimeoutStart USES_TERMINAL
+        COMMAND ${CMAKE_COMMAND} -E echo "Start sleep"
+    )
+    add_custom_target(Timeout ALL USES_TERMINAL
+        COMMAND ${CMAKE_COMMAND} -E sleep 11
+        COMMAND ${CMAKE_COMMAND} -E echo "End sleep"
+    )
+    add_dependencies(Timeout TimeoutStart)
+endif()
+
+add_custom_target(SpecialTarget
+    COMMAND ${CMAKE_COMMAND} -E echo "CMakeTools: Special Target"
+    )
+
+add_custom_target(PrintEnvironment
+    COMMAND ${CMAKE_COMMAND} -E environment
+    )
 
 if(MSVC)
     target_compile_definitions(MyExecutable PRIVATE _CRT_SECURE_NO_WARNINGS)

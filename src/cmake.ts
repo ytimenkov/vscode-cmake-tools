@@ -33,11 +33,6 @@ export interface CMakeBuildParams {
    * Configuration to build. Required for multi-target generators.
    */
   configuration?: string;
-
-  /**
-   * Directory to run build from.
-   */
-  cwd?: string;
 }
 
 /**
@@ -112,8 +107,7 @@ export class CMake {
     let options: SpawnOptions = {
       // We set NINJA_STATUS to force Ninja to use the format
       // that we would like to parse
-      env: { NINJA_STATUS: '[%f/%t %p] ' },
-      cwd: params.cwd
+      env: { NINJA_STATUS: '[%f/%t %p] ' }
     };
     if (params.environment) {
       options.env = mergeEnvironment(options.env, params.environment);
@@ -131,7 +125,11 @@ export class CMake {
           const procent = Math.floor(parseInt(res[1]) / 100);
           progressHandler.onProgress('Building', procent);
         }
+        progressHandler.onMessage(line);
       });
+      child.stderr.on('line', (line: string): void => {
+        progressHandler.onMessage(line, 'Error');
+      })
     }
 
     const result = await onComplete;

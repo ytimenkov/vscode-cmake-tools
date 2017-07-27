@@ -1,12 +1,3 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "type": "npm",
-            "script": "compile",
-            "problemMatcher": [
-                "$tsc-watch"
-            ]
-        }
-    ]
+    "version": "2.0.0"
 }

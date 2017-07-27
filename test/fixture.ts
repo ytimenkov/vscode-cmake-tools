@@ -1,7 +1,6 @@
 import { normalize, join } from "path";
 import { Disposable } from "vscode";
 import { CMakeToolsBackendFactory, CMakeToolsBackend, BackendConfiguredInitializationParams, ProgressHandler, BackendNewInitializationParams } from "../src/backend";
-import { spy } from "sinon";
 import { CMakeGenerator } from "../src/api";
 import { ServerClientCMakeToolsFactory } from "../src/client";
 import * as sinon from "Sinon";
@@ -14,6 +13,7 @@ declare global {
     namespace Chai {
         interface Assert {
             calledWithMatch(spy: sinon.SinonSpy, ...args: any[]): void;
+            calledWith(spy: sinon.SinonSpy, ...args: any[]): void;
             called(spy: sinon.SinonSpy): void;
         }
     }
@@ -22,14 +22,14 @@ declare global {
 sinon.assert.expose(chai.assert, { prefix: "" });
 
 export { assert } from "chai";
-export { spy } from "sinon";
+export { stub, spy, match } from "sinon";
 
 /**
  * A helper interface to create progress handler spies.
  */
 export interface ProgressHandlerSpy extends ProgressHandler {
     onProgress: sinon.SinonSpy & ((message: string, progress: number) => void);
-    onMessage: sinon.SinonSpy & ((message: string, title?: string) => void);
+    onMessage: sinon.SinonStub & ((message: string, title?: string) => void);
 }
 
 export const is0To1Ratio = sinon.match((n) => (0 <= n && n <= 1), 'Number between 0 and 1');
@@ -44,8 +44,8 @@ export class Fixture {
             onProgress: (message: string, progress: number) => { },
             onMessage: (message: string, title?: string) => { }
         };
-        spy(progressHandler, 'onProgress');
-        spy(progressHandler, 'onMessage');
+        sinon.spy(progressHandler, 'onProgress');
+        sinon.stub(progressHandler, 'onMessage');
         return <ProgressHandlerSpy>progressHandler;
     }
 }
