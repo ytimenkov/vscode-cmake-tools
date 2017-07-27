@@ -22,7 +22,7 @@ suite('Backend: Unconfigured project', function () {
             .binaryDir(binaryDir);
     }
 
-    test('Initializes new project', async function () {
+    test('Initializes new project and reports target', async function () {
         backend = await fixture().initializeNew();
 
         assert.include(backend.sourceDir, 'test_project');
@@ -110,7 +110,7 @@ suite('Backend tests', function () {
         assert.match(backend.generator.name, /\w+/);
     });
 
-    test('Can configure with default args', async function () {
+    test('Can configure with default args and reports target', async function () {
         const backend = await fixture().initializeConfigured();
 
         assert.isTrue(await backend.configure());

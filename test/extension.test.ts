@@ -42,44 +42,9 @@ function smokeTests(context, tag, setupHelper) {
         await util.pause(1000);
         await new Promise(resolve => exists ? rimraf(bd, resolve) : resolve());
     });
-    test(`Can configure [${tag}]`, async function () {
-        const retc = await cmt.configure();
-        assert.strictEqual(retc, 0);
-        assert((await cmt.targets).findIndex(t => t.name === 'MyExecutable') >= 0);
-    });
-    test(`Configure respects environment overrides [${tag}]`, async function () {
-        const homedir_varname = process.platform === 'win32' ? 'PROFILE' : 'HOME';
-        const suffix = '-TEST-APPENDED';
-        const homedir_var = process.env[homedir_varname] + suffix;
-        await vscode.workspace.getConfiguration('cmake').update('configureEnvironment', {
-            [homedir_varname]: homedir_var
-        });
-        const retc = await cmt.configure();
-        // Check that the cache got our modified env variable
-        const cache_content = await async.readFile(await cmt.cachePath);
-        const re = new RegExp("\nENV_HOME:STRING=(.*?)\n");
-        const seen = re.exec(cache_content.toString())![1];
-        assert.strictEqual(seen, homedir_var);
-        await vscode.workspace.getConfiguration('cmake').update('configureEnvironment', undefined);
-    });
-    test(`Can build named target [${tag}]`, async function () {
-        const retc = await cmt.build('MyExecutable');
-        assert.strictEqual(retc, 0);
-    });
-    test(`Non-existent target fails [${tag}]`, async function () {
-        const retc = await cmt.build('ThisIsNotAnExistingTarget');
-        assert.notStrictEqual(retc, 0);
-    });
     test(`Can execute CTest tests [${tag}]`, async function () {
         const retc = await cmt.ctest();
         assert.strictEqual(retc, 0);
-    });
-    test(`Finds executable targets [${tag}]`, async function () {
-        const retc = await cmt.configure();
-        assert.strictEqual(retc, 0, 'Configure failed');
-        const targets = await cmt.executableTargets;
-        assert.strictEqual(targets.length, 1, 'Executable targets are missing');
-        assert.strictEqual(targets[0].name, 'MyExecutable');
     });
     test(`CMake Diagnostic Parsing [${tag}]`, async function () {
         const retc = await cmt.configure(['-DWARNING_COOKIE=this-is-a-warning-cookie']);

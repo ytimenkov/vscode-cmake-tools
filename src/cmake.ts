@@ -84,8 +84,6 @@ export class CMake {
       '--build',
       params.binaryDir,
     ];
-    // .concat(config.buildArgs)
-    //   .concat(['--'].concat(generator_args).concat(config.buildToolArgs));
     if (params.target) {
       args.push('--target', params.target);
     }
@@ -99,10 +97,6 @@ export class CMake {
     if (params.buildToolArgs) {
       args.push(...params.buildToolArgs);
     }
-    // {
-    //   silent: false,
-    //     environment: config.buildEnvironment,
-    //     },
 
     let options: SpawnOptions = {
       // We set NINJA_STATUS to force Ninja to use the format
@@ -112,7 +106,6 @@ export class CMake {
     if (params.environment) {
       options.env = mergeEnvironment(options.env, params.environment);
     }
-    // this.executionEnvironmentVariables, options.environment);
 
     const { child, onComplete } = execute2(CMake.path, args, options, token);
 
