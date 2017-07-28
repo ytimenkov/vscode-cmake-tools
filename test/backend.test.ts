@@ -1,7 +1,7 @@
 import { rmdir } from "../src/util";
 import { Fixture, BackendFixture, TestEnv, is0To1Ratio, assert, spy } from "./fixture";
 import { ServerClientCMakeToolsFactory } from "../src/client";
-import { BackendNewInitializationParams, CMakeToolsBackend } from "../src/backend";
+import { CMakeToolsBackend } from "../src/backend";
 import { Disposable } from "vscode";
 import { exists, execute } from "../src/async";
 import { CMake } from "../src/cmake";

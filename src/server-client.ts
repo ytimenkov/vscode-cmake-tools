@@ -3,8 +3,6 @@ import * as net from 'net';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import * as async from './async';
-import * as cache from './cache';
 import { config } from './config';
 import { log } from './logging';
 import * as util from './util';
@@ -525,7 +523,7 @@ export class CMakeServerClient {
   sendRequest(t: 'compute', p?: ComputeParams, progress?: ProgressHandler, message?: MessageHandler): Promise<ComputeContent>;
   sendRequest(t: 'codemodel', p?: CodeModelParams, progress?: ProgressHandler, message?: MessageHandler): Promise<CodeModelContent>;
   sendRequest(T: 'cache', p?: CacheParams, progress?: ProgressHandler, message?: MessageHandler): Promise<CacheContent>;
-  sendRequest(type: string, params: any = {}, progress?: ProgressHandler, message?: MessageHandler): Promise<any> {
+  sendRequest(type: MessageType, params: any = {}, progress?: ProgressHandler, message?: MessageHandler): Promise<any> {
     const cookie = Math.random().toString();
     const pr = new Promise((resolve, reject) => {
       this._promisesResolvers.set(cookie, { resolve, reject, progress, message });
@@ -594,7 +592,7 @@ export class CMakeServerClient {
       const end_promise = new Promise(resolve => {
         const pipe = this._pipe = net.createConnection(pipe_file);
         pipe.on('data', this._onMoreData.bind(this));
-        pipe.on('error', (e) => {
+        pipe.on('error', (_) => {
           debugger;
           pipe.end();
         });
@@ -656,10 +654,7 @@ export class CMakeServerClient {
               hsparams.toolset = generator.toolset || config.toolset || undefined;
             }
 
-            const cache_path = path.join(params.binaryDir, 'CMakeCache.txt');
-            const have_cache = await async.exists(cache_path);
-
-            const res = await client.sendRequest('handshake', hsparams);
+            await client.sendRequest('handshake', hsparams);
             resolved = true;
             resolve(client);
           } catch (e) {

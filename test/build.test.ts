@@ -1,8 +1,8 @@
 import { join } from "path";
-import { Fixture, BackendFixture, assert, TestEnv, is0To1Ratio, match, stub } from "./fixture";
+import { Fixture, BackendFixture, assert, TestEnv, is0To1Ratio } from "./fixture";
 import { exists, execute } from "../src/async";
 import { rmdir } from "../src/util";
-import { CMake, CMakeBuildParams } from "../src/cmake";
+import { CMake } from "../src/cmake";
 import { CancellationTokenSource } from "vscode";
 
 suite('Build tests', function () {

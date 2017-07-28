@@ -2,7 +2,6 @@ import * as assert from 'assert';
 import * as path from 'path';
 
 import * as api from '../src/api';
-import * as diagnostics from '../src/diagnostics';
 import * as util from '../src/util';
 
 import { CMakeCache } from '../src/cache';

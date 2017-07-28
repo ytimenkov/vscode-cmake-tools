@@ -4,7 +4,7 @@ import * as proc from 'child_process';
 import * as fs from 'fs';
 
 
-export function doAsync<Result, Param, ErrorType>(
+export function doAsync<Result, Param>(
         fn: (param: Param, callback: (error: NodeJS.ErrnoException, res: Result) => void) => void,
         p: Param
 ): Promise<Result> {
@@ -19,7 +19,7 @@ export function doAsync<Result, Param, ErrorType>(
     });
 }
 
-export function doVoidAsync<Param, ErrorType>(
+export function doVoidAsync<Param>(
         fn: (param: Param, callback: (error: NodeJS.ErrnoException) => void) => void,
         p: Param
 ): Promise<void> {
@@ -163,7 +163,7 @@ export class Throttler<T> {
                     return result;
                 };
 
-                this.queuedPromise = new Promise<T>((resolve, reject) => {
+                this.queuedPromise = new Promise<T>((resolve) => {
                     this.activePromise.then(onComplete, onComplete).then(resolve);
                 });
             }

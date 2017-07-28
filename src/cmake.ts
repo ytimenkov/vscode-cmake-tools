@@ -64,7 +64,7 @@ export class CMake {
   }
 
 
-  static executeCMakeCommand(args: string[], options?: ExecuteOptions): Promise<ExecutionResult> {
+  static executeCMakeCommand(_args: string[], _options?: ExecuteOptions): Promise<ExecutionResult> {
     return Promise.reject(new Error("TODO"));
   }
 

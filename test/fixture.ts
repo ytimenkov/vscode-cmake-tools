@@ -41,8 +41,8 @@ export class Fixture {
 
     static createProgressHandler(): ProgressHandlerSpy {
         let progressHandler = {
-            onProgress: (message: string, progress: number) => { },
-            onMessage: (message: string, title?: string) => { }
+            onProgress: (_message: string, _progress: number) => { },
+            onMessage: (_message: string, _title?: string) => { }
         };
         sinon.spy(progressHandler, 'onProgress');
         sinon.stub(progressHandler, 'onMessage');

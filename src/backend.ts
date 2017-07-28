@@ -1,4 +1,4 @@
-import { Target, ExecutionResult, ExecuteOptions, CompilationInfo, VariantKeywordSettings, CMakeGenerator } from './api';
+import { Target, CompilationInfo, CMakeGenerator } from './api';
 import { Disposable, Event } from "vscode";
 
 /**

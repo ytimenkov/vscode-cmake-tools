@@ -4,14 +4,13 @@ import * as path from 'path';
 
 import * as api from './api';
 import * as diagnostics from './diagnostics';
-import * as async from './async';
 import * as cache from './cache';
 import * as util from './util';
 import { config } from './config';
 import * as cms from './server-client';
 import { log } from './logging';
 import { CMakeToolsBackend, CMakeToolsBackendFactory, BackendNewInitializationParams, ProgressHandler, BackendConfiguredInitializationParams } from './backend';
-import { CancellationToken, DiagnosticCollection, Disposable, EventEmitter, languages } from 'vscode';
+import { DiagnosticCollection, Disposable, EventEmitter, languages } from 'vscode';
 import { CMake } from './cmake'
 
 export class ServerClientCMakeTools implements CMakeToolsBackend {
@@ -25,12 +24,6 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
   private _dirty = true;
   private _cacheEntries = new Map<string, cache.Entry>();
   private _accumulatedMessages: string[] = [];
-
-  /**
-   * The primary build output channel. We use the ThrottledOutputChannel because
-   * large volumes of output can make VSCode choke
-   */
-  private readonly _channel = new util.ThrottledOutputChannel('CMake/Build');
 
   private constructor(public client: cms.CMakeServerClient) {
   }
@@ -159,7 +152,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
             const defs_o = defs.reduce((acc, el) => {
               acc[el[0]] = el[1];
               return acc;
-            }, {});
+            }, <{ [define: string]: string | null }>{});
             return {
               file: found,
               compileDefinitions: defs_o,
@@ -242,12 +235,6 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
     return true;
   }
 
-  async build(target?: string, configuration?: string, progressHandler?: ProgressHandler, token?: CancellationToken): Promise<boolean> {
-    // TODO: some stuff in common.ts does pre-requisite checks.
-    // TODO:
-    return true;
-  }
-
   get targets(): api.RichTarget[] {
     type Ret = api.RichTarget[];
     if (!this.codeModel) {
@@ -289,7 +276,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
   private async _refreshCacheEntries() {
     const clcache = await this.client.getCMakeCacheContent();
     return this._cacheEntries = clcache.cache.reduce((acc, el) => {
-      const type: api.EntryType = {
+      const type: api.EntryType = (<{ [key: string]: api.EntryType }>{
         BOOL: api.EntryType.Bool,
         STRING: api.EntryType.String,
         PATH: api.EntryType.Path,
@@ -297,7 +284,7 @@ export class ServerClientCMakeTools implements CMakeToolsBackend {
         INTERNAL: api.EntryType.Internal,
         UNINITIALIZED: api.EntryType.Uninitialized,
         STATIC: api.EntryType.Static,
-      }[el.type];
+      })[el.type];
       console.assert(type !== undefined, `Unknown cache type ${el.type}`);
       acc.set(
         el.key, new cache.Entry(

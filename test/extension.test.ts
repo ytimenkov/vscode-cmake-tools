@@ -1,11 +1,9 @@
-import * as path from 'path';
 import * as fs from 'fs';
 
 import * as assert from 'assert';
 
 import * as vscode from 'vscode';
 
-import * as api from '../src/api';
 import * as wrapper from '../src/wrapper';
 import * as util from '../src/util';
 import * as async from '../src/async';
@@ -22,7 +20,7 @@ async function getExtension(): Promise<wrapper.CMakeToolsWrapper> {
 }
 
 
-function smokeTests(context, tag, setupHelper) {
+function smokeTests(context: Mocha.ISuiteCallbackContext, tag: string, setupHelper: () => Promise<void>) {
     context.timeout(60 * 1000); // These tests are slower than just unit tests
     let cmt: wrapper.CMakeToolsWrapper;
     setup(async function () {
@@ -50,7 +48,7 @@ function smokeTests(context, tag, setupHelper) {
         const retc = await cmt.configure(['-DWARNING_COOKIE=this-is-a-warning-cookie']);
         assert.strictEqual(retc, 0);
         const diags: vscode.Diagnostic[] = [];
-        (await cmt.diagnostics).forEach((d, diags_) => diags.push(...diags_));
+        (await cmt.diagnostics).forEach((_, diags_) => diags.push(...diags_));
         assert.strictEqual(diags.length, 1);
         const diag = diags[0];
         assert.strictEqual(diag.source, 'CMake (message)');
