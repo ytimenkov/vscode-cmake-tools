@@ -4,6 +4,7 @@
 import * as http from 'http';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import {CancellationTokenSource, Disposable} from 'vscode';
 import * as ws from 'ws';
 
 import * as api from './api';
@@ -489,10 +490,12 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
     }
     const target = target_ ? target_ : this._stateManager.defaultBuildTarget || await this.allTargetName;
     const consumer = new diags.CMakeBuildConsumer();
+    const cts = new CancellationTokenSource();
+    let cancellation: Disposable|undefined;
     try {
-      this._model.activity = {name: 'Building'};
-      this._statusBar.setVisible(true);
-      this._statusBar.setIsBusy(true);
+      this._model.activity = {name: 'Building', cts: cts};
+      cancellation = cts.token.onCancellationRequested(async () => { await drv.stopCurrentProcess(); });
+
       consumer.onProgress(pr => { this._statusBar.setProgress(pr.value); });
       log.showChannel();
       build_log.info('Starting build');
@@ -506,8 +509,10 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
       populateCollection(this._buildDiagnostics, file_diags);
       return rc === null ? -1 : rc;
     } finally {
-      this._statusBar.setIsBusy(false);
       this._model.activity = undefined;
+      cts.dispose();
+      if (cancellation)
+        cancellation.dispose();
       consumer.dispose();
     }
   }
@@ -609,17 +614,12 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
    * Implementation of `cmake.stop`
    */
   async stop(): Promise<boolean> {
-    const drv = await this._cmakeDriver;
-    if (!drv) {
-      return false;
+    const activity = this._model.activity;
+    if (activity && activity.cts) {
+      activity.cts.cancel();
+      return true;
     }
-
-    return drv.stopCurrentProcess().then(
-        () => {
-          this._cmakeDriver = Promise.resolve(null);
-          return true;
-        },
-        () => { return false; });
+    return false;
   }
 
   /**

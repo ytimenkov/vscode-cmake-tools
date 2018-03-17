@@ -90,12 +90,7 @@ export class StatusBar implements vscode.Disposable {
   private _visible: boolean = true;
 
   private _reloadStatusButton() {
-    const activity = this._model.activity;
-    let text = `CMake: ${this._projectName}: ${this._buildTypeLabel}`;
-    if (activity) {
-      text += `: ${activity.name}`;
-    }
-    this._cmakeToolsStatusItem.text = text;
+    this._cmakeToolsStatusItem.text = `CMake: ${this._projectName}: ${this._buildTypeLabel}`;
     this._cmakeToolsStatusItem.show();
   }
 
@@ -175,28 +170,27 @@ export class StatusBar implements vscode.Disposable {
 
   /** Reloads the content of the build button */
   private _reloadBuildButton() {
-    this._buildButton.text = ``;
-    let progress_bar = '';
-    const prog = this._progress;
-    if (prog !== null) {
-      const bars = prog * 0.4 | 0;
-      progress_bar = ` [${Array(bars).join('█')}${Array(40 - bars).join('░')}] ${prog}%`;
+    const activity = this._model.activity;
+    let text = '';
+    if (activity) {
+      if (activity.cts) {
+        text = '$(x) ';
+        this._buildButton.command = 'cmake.stop';
+      } else {
+        this._buildButton.command = undefined;
+      }
+      text += activity.name;
+    } else {
+      text = '$(gear) Build';
+      this._buildButton.command = 'cmake.build';
     }
-    this._buildButton.text = this._isBusy ? `$(x) Stop${progress_bar}` : `$(gear) Build:`;
-    this._buildButton.command = this._isBusy ? 'cmake.stop' : 'cmake.build';
-    if (this._isBusy) {
-      this._buildButton.show();
-    }
-  }
 
-  /**
-   * Whether or not to show a 'Build' or 'Stop' button. Changes the content
-   * of the button and the command that is executed when the button is pressed
-   */
-  private _isBusy: boolean = false;
-  setIsBusy(v: boolean) {
-    this._isBusy = v;
-    this._reloadBuildButton();
+    const prog = this._progress;
+    if (prog) {
+      const bars = prog * 0.4 | 0;
+      text += ` [${Array(bars).join('█')}${Array(40 - bars).join('░')}] ${prog}%`;
+    }
+    this._buildButton.text = text;
   }
 
   /**
@@ -209,7 +203,7 @@ export class StatusBar implements vscode.Disposable {
     this._reloadBuildButton();
   }
 
-  private _updateActivity(_prevActivity?: Activity) { this._reloadStatusButton(); }
+  private _updateActivity(_prevActivity?: Activity) { this._reloadBuildButton(); }
 
   private _reloadKitsButton() {
     if (this._visible) {

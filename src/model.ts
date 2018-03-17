@@ -1,12 +1,20 @@
-import {Disposable, Event, EventEmitter} from 'vscode';
+import {CancellationTokenSource, Disposable, Event, EventEmitter} from 'vscode';
 
 /**
  * Information about current long-running activity, like
  * initializing, building, etc.
  */
-export class Activity {
+export interface Activity {
+  /**
+   * The activity name.
+   */
   name: string;
-  // TODO: add cancellation, etc.
+
+  /**
+   * CancellationTokenSource (if present) can be used to cancel
+   * ongoing activity or subscribe for cancellation.
+   */
+  cts?: CancellationTokenSource;
 }
 
 /**
@@ -31,5 +39,5 @@ export class Model implements Disposable {
   }
   private _activity?: Activity;
 
-  dispose(): void { [this._onDidChangeActivity].forEach(d => d.dispose()); }
+  dispose(): void { this._onDidChangeActivity.dispose(); }
 }
