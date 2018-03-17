@@ -18,6 +18,7 @@ import {CMakeDriver} from './driver';
 import {KitManager} from './kit';
 import {LegacyCMakeDriver} from './legacy-driver';
 import * as logging from './logging';
+import {Model} from './model';
 import {NagManager} from './nag';
 import paths from './paths';
 import {fs} from './pr';
@@ -49,6 +50,7 @@ const build_log = logging.createLogger('build');
 export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
   private readonly _http_server: http.Server;
   private _ws_server: ws.Server;
+  private readonly _model: Model;
 
   private readonly _nagManager = new NagManager(this.extensionContext);
 
@@ -61,6 +63,9 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
   private constructor(readonly extensionContext: vscode.ExtensionContext) {
     // Handle the active kit changing. We want to do some updates and teardown
     log.debug('Constructing new CMakeTools instance');
+
+    this._model = new Model();
+    this._statusBar = new StatusBar(this._model);
 
     const editor_server = this._http_server = http.createServer();
     const ready = new Promise((resolve, reject) => {
@@ -134,7 +139,7 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
   /**
    * The status bar manager. Has two-phase init.
    */
-  private readonly _statusBar: StatusBar = new StatusBar();
+  private readonly _statusBar: StatusBar;
 
   /**
    * Dispose the extension
@@ -304,8 +309,6 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
     this._ctestController.onTestingEnabledChanged(enabled => { this._statusBar.ctestEnabled = enabled; });
     this._ctestController.onResultsChanged(res => { this._statusBar.testResults = res; });
 
-    this._statusBar.setStatusMessage('Ready');
-
     // Additional, non-extension: Start up nagging.
     this._nagManager.start();
   }
@@ -341,7 +344,10 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
   static async create(ctx: vscode.ExtensionContext): Promise<CMakeTools> {
     log.debug('Safe constructing new CMakeTools instance');
     const inst = new CMakeTools(ctx);
-    await inst._init();
+    try {
+      inst._model.activity = {name: 'Loading'};
+      await inst._init();
+    } finally { inst._model.activity = undefined; }
     log.debug('CMakeTools instance initialization complete.');
     return inst;
   }
@@ -424,10 +430,13 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
       log.clearOutputChannel();
     }
     log.showChannel();
-    const consumer = new diags.CMakeOutputConsumer(await this.sourceDir);
-    const retc = await cb(consumer);
-    diags.populateCollection(this._configureDiagnostics, consumer.diagnostics);
-    return retc;
+    try {
+      this._model.activity = {name: 'Configuring'};
+      const consumer = new diags.CMakeOutputConsumer(await this.sourceDir);
+      const retc = await cb(consumer);
+      diags.populateCollection(this._configureDiagnostics, consumer.diagnostics);
+      return retc;
+    } finally { this._model.activity = undefined; }
   }
 
   /**
@@ -481,7 +490,7 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
     const target = target_ ? target_ : this._stateManager.defaultBuildTarget || await this.allTargetName;
     const consumer = new diags.CMakeBuildConsumer();
     try {
-      this._statusBar.setStatusMessage('Building');
+      this._model.activity = {name: 'Building'};
       this._statusBar.setVisible(true);
       this._statusBar.setIsBusy(true);
       consumer.onProgress(pr => { this._statusBar.setProgress(pr.value); });
@@ -498,6 +507,7 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
       return rc === null ? -1 : rc;
     } finally {
       this._statusBar.setIsBusy(false);
+      this._model.activity = undefined;
       consumer.dispose();
     }
   }
@@ -604,12 +614,12 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
       return false;
     }
 
-    return drv.stopCurrentProcess().then(() => {
-      this._cmakeDriver = Promise.resolve(null);
-      return true;
-    }, () =>{
-      return false;
-    });
+    return drv.stopCurrentProcess().then(
+        () => {
+          this._cmakeDriver = Promise.resolve(null);
+          return true;
+        },
+        () => { return false; });
   }
 
   /**

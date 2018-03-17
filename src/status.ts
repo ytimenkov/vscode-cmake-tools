@@ -1,5 +1,8 @@
 import * as vscode from 'vscode';
+import {Disposable} from 'vscode';
+
 import {BasicTestResults} from './ctest';
+import {Activity, Model} from './model';
 
 interface Hideable {
   show(): void;
@@ -24,22 +27,25 @@ export class StatusBar implements vscode.Disposable {
   private readonly _testButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3.1);
   private readonly _warningMessage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 3);
 
+  private disposables: Disposable[] = [
+    this._cmakeToolsStatusItem,
+    this._kitSelectionButton,
+    this._buildButton,
+    this._targetButton,
+    this._launchTargetNameButton,
+    this._testButton,
+    this._warningMessage,
+  ];
+
   dispose() {
-    const items = [
-      this._cmakeToolsStatusItem,
-      this._kitSelectionButton,
-      this._buildButton,
-      this._targetButton,
-      this._launchTargetNameButton,
-      this._testButton,
-      this._warningMessage,
-    ];
-    for (const item of items) {
+    for (const item of this.disposables) {
       item.dispose();
     }
   }
 
-  constructor() {
+  constructor(private _model: Model) {
+    this._model.onDidChangeActivity(this._updateActivity, this, this.disposables);
+
     this._cmakeToolsStatusItem.command = 'cmake.setVariant';
     this._cmakeToolsStatusItem.tooltip = 'Click to select the current build variant';
     this._buildButton.command = 'cmake.build';
@@ -84,8 +90,13 @@ export class StatusBar implements vscode.Disposable {
   private _visible: boolean = true;
 
   private _reloadStatusButton() {
-    this._cmakeToolsStatusItem.text = `CMake: ${this._projectName}: ${this._buildTypeLabel}: ${this._statusMessage}`;
-    this.reloadVisibility();
+    const activity = this._model.activity;
+    let text = `CMake: ${this._projectName}: ${this._buildTypeLabel}`;
+    if (activity) {
+      text += `: ${activity.name}`;
+    }
+    this._cmakeToolsStatusItem.text = text;
+    this._cmakeToolsStatusItem.show();
   }
 
   private _reloadDebugButton() {
@@ -116,16 +127,6 @@ export class StatusBar implements vscode.Disposable {
   private _buildTypeLabel: string = 'Unconfigured';
   setBuildTypeLabel(v: string) {
     this._buildTypeLabel = v;
-    this._reloadStatusButton();
-  }
-
-  /**
-   * The message shown in the primary status button. Tells the user what the
-   * extension is currently up to.
-   */
-  private _statusMessage: string = 'Loading...';
-  setStatusMessage(v: string) {
-    this._statusMessage = v;
     this._reloadStatusButton();
   }
 
@@ -207,6 +208,8 @@ export class StatusBar implements vscode.Disposable {
     this._progress = v;
     this._reloadBuildButton();
   }
+
+  private _updateActivity(_prevActivity?: Activity) { this._reloadStatusButton(); }
 
   private _reloadKitsButton() {
     if (this._visible) {
