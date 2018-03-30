@@ -1,28 +1,19 @@
-import * as chai from 'chai';
-import {expect} from 'chai';
-import * as chaiAsPromised from 'chai-as-promised';
-chai.use(chaiAsPromised);
+import * as api from '@cmt/api';
+import {CMakeCache} from '@cmt/cache';
+import {CMakeTools} from '@cmt/cmake-tools';
+import {normalizePath} from '@cmt/util';
+import {clearExistingKitConfigurationFile, DefaultEnvironment, expect} from '@test/util';
 
-import {clearExistingKitConfigurationFile} from '../../../test-helpers';
-import {DefaultEnvironment} from '../../../helpers/test/default-environment';
-
-import * as api from '../../../../src/api';
 import * as path from 'path';
-import {CMakeCache} from '../../../../src/cache';
-import {CMakeTools} from '../../../../src/cmake-tools';
-import {normalizePath} from '../../../../src/util';
 
 suite('[Variable Substitution]', async () => {
   let cmt: CMakeTools;
   let testEnv: DefaultEnvironment;
 
   setup(async function(this: Mocha.IBeforeAndAfterContext) {
-    if (process.env.HasVs != 'true') {
-      this.skip();
-    }
     this.timeout(100000);
 
-    testEnv = new DefaultEnvironment('test/extension-tests/successful-build/project-folder');
+    testEnv = new DefaultEnvironment('test/extension-tests/successful-build/project-folder', 'build', 'output.txt');
     cmt = await CMakeTools.create(testEnv.vsContext);
 
     // This test will use all on the same kit.

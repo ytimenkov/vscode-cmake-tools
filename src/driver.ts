@@ -35,9 +35,7 @@ export abstract class CMakeDriver implements vscode.Disposable {
    *
    * @returns The exit code from CMake
    */
-  protected abstract doConfigure(extra_args: string[],
-                                 consumer?: proc.OutputConsumer,
-                                 environment?: proc.EnvironmentVariables): Promise<number>;
+  protected abstract doConfigure(extra_args: string[], consumer?: proc.OutputConsumer): Promise<number>;
 
   /**
    * Perform a clean configure. Deletes cached files before running the config
@@ -99,6 +97,16 @@ export abstract class CMakeDriver implements vscode.Disposable {
    */
   getKitEnvironmentVariablesObject(): proc.EnvironmentVariables {
     return util.reduce(this._kitEnvironmentVariables.entries(), {}, (acc, [key, value]) => ({...acc, [key]: value}));
+  }
+
+  /**
+   * Get the environment variables that should be set at CMake-configure time.
+   */
+  async getConfigureTimeEnvironment(): Promise<proc.EnvironmentVariables> {
+    return util.mergeEnvironment(this.getKitEnvironmentVariablesObject(),
+                                 await this.getExpandedEnvironment(),
+                                 await this.getExpandedConfigureEnvironment(),
+                                 this._variantEnv);
   }
 
   /**
@@ -336,6 +344,11 @@ export abstract class CMakeDriver implements vscode.Disposable {
   private _variantLinkage: ('static'|'shared'|null) = null;
 
   /**
+   * Environment variables defined by the current variant
+   */
+  private _variantEnv: proc.EnvironmentVariables = {};
+
+  /**
    * Change the current options from the variant.
    * @param opts The new options
    */
@@ -344,6 +357,7 @@ export abstract class CMakeDriver implements vscode.Disposable {
     this._variantBuildType = opts.buildType || this._variantBuildType;
     this._variantConfigureSettings = opts.settings || this._variantConfigureSettings;
     this._variantLinkage = opts.linkage || null;
+    this._variantEnv = opts.env || {};
     await this._refreshExpansions();
   }
 
@@ -470,8 +484,8 @@ export abstract class CMakeDriver implements vscode.Disposable {
   private async testHaveCommand(program: string, args: string[] = ['--version']): Promise<boolean> {
     const child = this.executeCommand(program, args, undefined, {silent: true});
     try {
-      await child.result;
-      return true;
+      const result = await child.result;
+      return result.retc == 0;
     } catch (e) {
       const e2: NodeJS.ErrnoException = e;
       if (e2.code == 'ENOENT') {
@@ -536,12 +550,14 @@ export abstract class CMakeDriver implements vscode.Disposable {
         if (gen.name.toLowerCase().startsWith('xcode') && platform === 'darwin') {
           return gen;
         }
-        vscode.window.showErrorMessage(`Unknown CMake generator "${gen.name}"`);
         continue;
       } else {
         return gen;
       }
     }
+    vscode.window.showErrorMessage(
+        `Unable to determine what CMake generator to use.
+Please install or configure a preferred generator, or update settings.json or your Kit configuration.`);
     return null;
   }
 
@@ -621,9 +637,7 @@ export abstract class CMakeDriver implements vscode.Disposable {
     const expanded_flags = await Promise.all(expanded_flags_promises);
     log.trace('CMake flags are', JSON.stringify(expanded_flags));
 
-    const configure_env = util.mergeEnvironment(await this.getExpandedEnvironment(), await expanded_configure_env);
-
-    const retc = await this.doConfigure(expanded_flags, consumer, configure_env);
+    const retc = await this.doConfigure(expanded_flags, consumer);
     this._onReconfiguredEmitter.fire();
     await this._refreshExpansions();
     return retc;

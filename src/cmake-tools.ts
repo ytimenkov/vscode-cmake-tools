@@ -331,6 +331,13 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
     if ((await this._cmakeDriver) === null) {
       log.debug('Starting new CMake driver');
       this._cmakeDriver = this._startNewCMakeDriver();
+
+      try {
+        await this._cmakeDriver;
+      } catch (ex) {
+        this._cmakeDriver = Promise.resolve(null);
+        throw ex;
+      }
     }
     return this._cmakeDriver;
   }
@@ -494,7 +501,10 @@ export class CMakeTools implements vscode.Disposable, api.CMakeToolsAPI {
     let cancellation: Disposable|undefined;
     try {
       this._model.activity = {name: 'Building', cts: cts};
-      cancellation = cts.token.onCancellationRequested(async () => { await drv.stopCurrentProcess(); });
+      cancellation = cts.token.onCancellationRequested(async () => {
+        await drv.stopCurrentProcess();
+        this._cmakeDriver = Promise.resolve(null);
+      });
 
       consumer.onProgress(pr => { this._statusBar.setProgress(pr.value); });
       log.showChannel();

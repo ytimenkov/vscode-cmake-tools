@@ -5,6 +5,7 @@ import * as api from './api';
 import {CacheEntryProperties, ExecutableTarget, RichTarget} from './api';
 import * as cache from './cache';
 import * as cms from './cms-client';
+import config from './config';
 import {CMakeDriver} from './driver';
 import {Kit} from './kit';
 import {createLogger} from './logging';
@@ -18,10 +19,21 @@ import * as util from './util';
 const log = createLogger('cms-driver');
 
 export class CMakeServerClientDriver extends CMakeDriver {
-  private constructor(stateman: StateManager) { super(stateman); }
+  private constructor(stateman: StateManager) {
+    super(stateman);
+    config.onChange('environment', () => this._restartClient());
+    config.onChange('configureEnvironment', () => this._restartClient());
+  }
+
   private _cmsClient: Promise<cms.CMakeServerClient>;
   private _globalSettings: cms.GlobalSettingsContent;
   private _cacheEntries = new Map<string, cache.Entry>();
+
+  /**
+   * The previous configuration environment. Used to detect when we need to
+   * restart cmake-server
+   */
+  private _prevConfigureEnv = 'null';
 
   private _codeModel: null|cms.CodeModelContent;
   get codeModel(): null|cms.CodeModelContent { return this._codeModel; }
@@ -134,36 +146,38 @@ export class CMakeServerClientDriver extends CMakeDriver {
     if (!bindir_before.length || !srcdir_before.length) {
       return;
     }
-    if (bindir_before !== this.binaryDir || srcdir_before != this.sourceDir) {
+    const new_env = JSON.stringify(await this.getConfigureTimeEnvironment());
+    if (bindir_before !== this.binaryDir || srcdir_before != this.sourceDir || new_env != this._prevConfigureEnv) {
       // Directories changed. We need to restart the driver
       await this._restartClient();
     }
+    this._prevConfigureEnv = new_env;
   }
 
   get targets(): RichTarget[] {
     if (!this._codeModel) {
       return [];
     }
-    const config = this._codeModel.configurations.find(conf => conf.name == this.currentBuildType);
-    if (!config) {
+    const build_config = this._codeModel.configurations.find(conf => conf.name == this.currentBuildType);
+    if (!build_config) {
       log.error('Found no matching code model for the current build type. This shouldn\'t be possible');
       return [];
     }
-    return config.projects.reduce<RichTarget[]>((acc, project) => acc.concat(
-                                                    project.targets.map(t => ({
-                                                                          type: 'rich' as 'rich',
-                                                                          name: t.name,
-                                                                          filepath: t.artifacts && t.artifacts.length
-                                                                              ? path.normalize(t.artifacts[0])
-                                                                              : 'Utility target',
-                                                                          targetType: t.type,
-                                                                        }))),
-                                                [{
-                                                  type: 'rich' as 'rich',
-                                                  name: this.allTargetName,
-                                                  filepath: 'A special target to build all available targets',
-                                                  targetType: 'META',
-                                                }]);
+    return build_config.projects.reduce<RichTarget[]>((acc, project) => acc.concat(project.targets.map(
+                                                          t => ({
+                                                            type: 'rich' as 'rich',
+                                                            name: t.name,
+                                                            filepath: t.artifacts && t.artifacts.length
+                                                                ? path.normalize(t.artifacts[0])
+                                                                : 'Utility target',
+                                                            targetType: t.type,
+                                                          }))),
+                                                      [{
+                                                        type: 'rich' as 'rich',
+                                                        name: this.allTargetName,
+                                                        filepath: 'A special target to build all available targets',
+                                                        targetType: 'META',
+                                                      }]);
   }
 
   get executableTargets(): ExecutableTarget[] {
@@ -196,13 +210,13 @@ export class CMakeServerClientDriver extends CMakeDriver {
     if (!this.codeModel) {
       return null;
     }
-    const config = this.codeModel.configurations.length === 1
+    const build_config = this.codeModel.configurations.length === 1
         ? this.codeModel.configurations[0]
         : this.codeModel.configurations.find(c => c.name == this.currentBuildType);
-    if (!config) {
+    if (!build_config) {
       return null;
     }
-    for (const project of config.projects) {
+    for (const project of build_config.projects) {
       for (const target of project.targets) {
         for (const group of target.fileGroups) {
           const found = group.sources.find(source => {
@@ -248,9 +262,7 @@ export class CMakeServerClientDriver extends CMakeDriver {
       binaryDir: this.binaryDir,
       sourceDir: this.sourceDir,
       cmakePath: await paths.cmakePath,
-      environment: util.mergeEnvironment(await this.getExpandedConfigureEnvironment(),
-                                         await this.getExpandedEnvironment(),
-                                         this.getKitEnvironmentVariablesObject()),
+      environment: await this.getConfigureTimeEnvironment(),
       onDirty: async () => { this._dirty = true; },
       onMessage: async msg => { this._onMessageEmitter.fire(msg.message); },
       onProgress: async _prog => {},

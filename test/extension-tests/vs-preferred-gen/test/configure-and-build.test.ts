@@ -1,5 +1,6 @@
 import {CMakeTools} from '@cmt/cmake-tools';
 import config from '@cmt/config';
+
 import {clearExistingKitConfigurationFile, DefaultEnvironment, expect} from '@test/util';
 
 suite('Build', async () => {
@@ -7,12 +8,15 @@ suite('Build', async () => {
   let testEnv: DefaultEnvironment;
 
   setup(async function(this: Mocha.IBeforeAndAfterContext) {
+    if (process.env.HasVs != 'true') {
+      this.skip();
+    }
     this.timeout(100000);
 
-    const build_loc = 'build';
-    const exe_res = 'output.txt';
-
-    testEnv = new DefaultEnvironment('test/extension-tests/successful-build/project-folder', build_loc, exe_res);
+    testEnv = new DefaultEnvironment('test/extension-tests/vs-preferred-gen/project-folder',
+                                     'build',
+                                     'output.txt',
+                                     '^Visual ?Studio');
     cmt = await CMakeTools.create(testEnv.vsContext);
 
     // This test will use all on the same kit.
@@ -31,7 +35,7 @@ suite('Build', async () => {
     testEnv.teardown();
   });
 
-  test('Configure', async () => {
+  test('Configure ', async () => {
     expect(await cmt.configure()).to.be.eq(0);
 
     expect(testEnv.projectFolder.buildDirectory.isCMakeCachePresent).to.eql(true, 'no expected cache present');
@@ -41,7 +45,7 @@ suite('Build', async () => {
     expect(await cmt.build()).to.be.eq(0);
 
     const result = await testEnv.result.getResultAsJson();
-    expect(result['cookie']).to.eq('passed-cookie');
+    expect(result['compiler']).to.eq('Microsoft Visual Studio');
   }).timeout(60000);
 
 
@@ -50,7 +54,7 @@ suite('Build', async () => {
     expect(await cmt.build()).to.be.eq(0);
 
     const result = await testEnv.result.getResultAsJson();
-    expect(result['cookie']).to.eq('passed-cookie');
+    expect(result['compiler']).to.eq('Microsoft Visual Studio');
   }).timeout(60000);
 
   test('Configure and Build', async () => {
@@ -58,7 +62,7 @@ suite('Build', async () => {
     expect(await cmt.build()).to.be.eq(0);
 
     const result = await testEnv.result.getResultAsJson();
-    expect(result['cookie']).to.eq('passed-cookie');
+    expect(result['compiler']).to.eq('Microsoft Visual Studio');
   }).timeout(60000);
 
   test('Test setting watcher', async () => {
